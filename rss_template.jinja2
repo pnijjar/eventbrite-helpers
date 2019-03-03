@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<rss version="2.0"
+    xmlns:atom="http://www.w3.org/2005/Atom"
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+>
+
+    <channel>
+        <title>{{ feed_title }}</title>
+        <description>{{ feed_description }}</description>
+        <link>{{ feed_website }}</link>
+        <pubDate>{{ feed_pubdate | rfc822 }}</pubDate>
+        <webMaster>{{ feed_webmaster }} ({{ feed_webmaster_name }})</webMaster>
+        <lastBuildDate>{{ feed_builddate }}</lastBuildDate>
+        <image>
+            <url>{{ feed_logo_url}}</url>
+            <title>{{ feed_title }}</title>
+            <link>{{ feed_website }}</link>
+        </image>
+        <atom:link href="{{ feed_selflink }}" rel="self" type="application/rss+xml" />
+
+        {% for item in feed_items %}
+        <item>
+            <title>{{ item['summary'] }}</title>
+            <link>{{ item['htmlLink'] }}</link>
+            <description>
+
+                {# Sometimes the provided date formats are different, 
+                 # so be careful.
+                 #}
+                &lt;p&gt;
+                &lt;strong&gt;Date and Time: &lt;/strong&gt;
+                {% if item['start']['dateTime'] is defined %}
+                    {{ item['start']['dateTime'] | humandate }} 
+                {% elif item['start']['date'] is defined  %}
+                    {{ item['start']['date'] | humandateonly }}
+                {% else %}
+                    unknown.
+                {% endif %}
+                &lt;/p&gt;
+                
+                &lt;p&gt;
+                &lt;strong&gt;Location: &lt;/strong&gt;
+                {% if item['location'] is defined %}
+                    {{ item['location'] }}
+                {% else %}
+                    unknown.
+                {% endif %}
+                &lt;/p&gt;
+
+                {{ item['description'] | markdown }}
+            </description>
+            <guid isPermaLink="false">{{ item['iCalUID'] }}</guid>
+            <pubDate>{{ item['updated'] | rfc822 }}</pubDate>
+        </item>
+        {% endfor %}
+    </channel>
+</rss>
+
