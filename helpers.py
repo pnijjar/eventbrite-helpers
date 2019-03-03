@@ -3,8 +3,113 @@
 import argparse, sys, os
 import json
 import requests
+import jinja2
+import pytz, datetime, dateutil.parser
+
+RSS_TEMPLATE="rss_template_eventbrite.jinja2"
+
 
 # ------------------------------
+def print_from_template (s): 
+    """ Show the value of a string that is being processed in a 
+        Jinja template, for debugging.
+    """
+    print(s)
+    return s
+
+# ------------------------------
+def clean_eventbrite_url (url):
+   """ Remove unneeded query info from Eventbrite URL
+   """
+
+   # FIXME
+   return url
+
+
+# ------------------------------
+def get_rfc822_datestring (google_date): 
+    """ Convert whatever date Google is using to the RFC-822 dates
+        that RSS wants.
+    """
+
+    # Sometimes dates look like "0000-12-29T00:00.000Z" and this
+    # confuses the date parser...
+    d = dateutil.parser.parse(google_date)
+
+    # Output the proper format
+    return d.strftime("%a, %d %b %Y %T %z")
+
+
+# ------------------------------
+def get_iso8601_datetime (google_date):
+    """ Convert a date to something that is easy to copy 
+        and paste: 2019-03-03 04:34
+    """
+    d = dateutil.parser.parse(google_date)
+
+    # 2005-10-02 20:00
+    return d.strftime("%F %H:%M")
+
+# ------------------------------
+def get_human_datestring (google_date): 
+    """ RFC 822 is ugly for humans. Use something nicer. """
+
+    d = dateutil.parser.parse(google_date)
+    
+    # Wednesday, Oct 02 2005, 8:00pm
+    return d.strftime("%A, %b %d %Y, %l:%M%P")
+
+# ------------------------------
+def get_human_dateonly (google_date):
+    """ If there is no minute defined then the date looks bad.
+    """
+
+    d = dateutil.parser.parse(google_date)
+    
+    # Wednesday, Oct 02 2005
+    return d.strftime("%A, %b %d %Y")
+
+# ------------------------------
+def get_short_human_dateonly (google_date):
+    """ Readable by humans, but shorter. """
+
+    d = dateutil.parser.parse(google_date)
+
+    # Sun, Feb 18
+    return d.strftime("%a, %b %e")
+
+# ------------------------------
+def get_short_human_datetime (google_date):
+    """ Date time readable by humans, but shorter. """
+
+    d = dateutil.parser.parse(google_date)
+
+    # Sun, Feb 18, 8:00pm
+    return d.strftime("%a, %b %e, %l:%M%P")
+
+
+# ------------------------------
+def get_human_timeonly (google_date):
+    """ Forget the date. Just gimme the time"""
+
+    d = dateutil.parser.parse(google_date)
+    #  8:00pm
+    return d.strftime("%l:%M%P")
+
+
+# ------------------------------
+def get_time_now():
+   
+    target_timezone = pytz.timezone(config.TIMEZONE)
+    time_now = datetime.datetime.now(tz=target_timezone)
+
+    return time_now
+
+
+# ------------------------------
+""" This calls the Eventbrite search API. May return an error 
+    that we ought to handle, but don't.
+"""
 def call_api():
 
     BASE_URL = "https://www.eventbriteapi.com/v3"
@@ -16,38 +121,23 @@ def call_api():
     curr_page = 1
     more_items = True
 
-    while more_items: 
+    query_args = config.QUERY_ARGS
+    event_list = []
 
+    while more_items: 
         api_params = { 
           'token': config.API_TOKEN,
           'page' : curr_page,
           'expand' : 'venue',
-
-          # This does not seem to work??
-          'location.address' : 'Kitchener',
-          'location.within' : '15km',
-          #'location.latitude' : "43.451640",
-          #'location.longitude' : "-80.492534",
-          #'categories' : '102,113',
-          #'q' : "counselling",
         }
+
+        api_params.update(query_args)
 
         r = requests.get(api_url, api_params)
         r_json = r.json() 
-        print(json.dumps(r_json, indent=2, sort_keys=True))
 
-        for event in r_json['events']:
-            location = "Not Specified"
-            if 'localized_address_display' in event['venue']['address'].keys():
-                location = event['venue']['address']['localized_address_display']
-
-         #   print("{}\n{}\n{}\n{}\n\n".format(
-         #     event['name']['text'],
-         #     event['start']['local'],
-         #     event['url'],
-         #     location,
-         #     ))
-
+        event_list = event_list + r_json['events']
+        print ("Added {} events".format(len(r_json)))
 
         if 'error' in r_json.keys():
             more_items = False
@@ -58,13 +148,83 @@ def call_api():
         else:
             more_items = False
 
+        #print("Processed page {}".format(curr_page,))
 
 
+    #print("Number of events: {}\n\n".format(len(event_list)))
+
+    # Maybe this should be a config?
+    event_list.sort(key=lambda x: x['created'], reverse=True)
+
+    return event_list
 
 
 
 
 # ------------------------------
+def generate_rss(cal_dict):
+    """ Given a JSON formatted calendar dictionary, make and return 
+        the RSS file.
+    """
+
+    # --- Process template 
+
+    template_loader = jinja2.FileSystemLoader(
+        searchpath=config.TEMPLATE_DIR
+        )
+    template_env = jinja2.Environment( 
+        loader=template_loader,
+        autoescape=True,
+        )
+    template_env.filters['rfc822'] = get_rfc822_datestring
+    template_env.filters['humandate'] = get_human_datestring
+    template_env.filters['humandateonly'] = get_human_dateonly
+    template_env.filters['iso8601'] = get_iso8601_datetime 
+    template_env.filters['print'] = print_from_template
+    template_env.filters['cleanurl'] = clean_eventbrite_url
+
+
+
+
+    time_now = get_time_now()
+    time_now_formatted = time_now.strftime("%a, %d %b %Y %T %z")
+
+    template = template_env.get_template( RSS_TEMPLATE ) 
+    template_vars = { 
+      "feed_title": config.FEED_TITLE,
+      "feed_description": config.FEED_DESCRIPTION,
+      "feed_webmaster" : config.WEBMASTER,
+      "feed_webmaster_name" : config.WEBMASTER_NAME,
+      "feed_builddate" : time_now_formatted,
+      "feed_pubdate" : time_now_formatted,
+      "feed_website" : config.WEBSITE,
+      #"feed_logo_url" : config.LOGO,
+      "feed_items" : cal_dict,
+      "feed_selflink" : config.FEED_LINK,
+      }
+
+    output_rss = template.render(template_vars)
+
+    return output_rss
+
+## ------------------------------
+def print_results(events):
+    for event in events:
+        #print("{}\\n\n".format(event))
+        print("{}\n{}\n{}\nCreated: {}\n\n".format(
+          event['name']['text'],
+          event['venue']['address']['localized_address_display'],
+          event['url'],
+          event['created']
+          ))
+
+
+
+
+
+
+
+## ------------------------------
 def load_config(configfile=None):
     """ Load configuration definitions.
        (This is really scary, actually. We are trusting that the 

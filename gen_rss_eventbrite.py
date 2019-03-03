@@ -3,5 +3,8 @@
 import helpers as h
 
 h.load_config()
-h.call_api()
+events = h.call_api()
+#h.print_results(results)
+outrss = h.generate_rss(events)
 
+print(outrss)
