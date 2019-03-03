@@ -1,0 +1,5 @@
+secrets/
+venv/
+bg-research/
+*.swp
+__pycache__/
