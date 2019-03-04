@@ -1,5 +1,4 @@
-secrets/
-!secrets/config.py.example
+config.py
 venv/
 bg-research/
 *.swp
