@@ -24,7 +24,7 @@
         {% for item in feed_items %}
         <item>
             <title>{{ item['name']['text'] -}}
-               {%- if item['is_free'] == 'false' -%}
+               {%- if item['is_free'] == false -%}
                  {{- ' ($)'-}}
                {%- endif -%}
             </title>
