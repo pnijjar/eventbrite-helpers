@@ -36,7 +36,7 @@
                 &lt;ul&gt;
                     &lt;li&gt;Start: {{ item['start']['local'] | humandate -}}&lt;/li&gt;
                     &lt;li&gt;End: {{ item['end']['local'] | humandate -}}&lt;/li&gt;
-                    &lt;li&gt;Nerd Start: {{ item['start']['local'] | iso8601 -}}&lt;/li&gt;
+                    &lt;li&gt;Start (Nerd formatted): {{ item['start']['local'] | iso8601 -}}&lt;/li&gt;
                 &lt;/ul&gt;
                 &lt;/p&gt;
                 
@@ -45,6 +45,7 @@
                 &lt;p&gt;
                 &lt;strong&gt;Location: &lt;/strong&gt;
                 {%- if item['venue']['address']['localized_address_display'] is defined %}
+                    {{ item['venue']['name'] }}{{', '}}
                     {{ item['venue']['address']['localized_address_display'] }}
                 {%- else -%}
                     unknown.
