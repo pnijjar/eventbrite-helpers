@@ -48,7 +48,7 @@ def get_iso8601_datetime (google_date):
     d = dateutil.parser.parse(google_date)
 
     # 2005-10-02 20:00
-    return d.strftime("%F %H:%M")
+    return "{} iso8601".format(d.strftime("%F %H:%M"))
 
 # ------------------------------
 def get_human_datestring (google_date): 
@@ -137,7 +137,6 @@ def call_api():
         r_json = r.json() 
 
         event_list = event_list + r_json['events']
-        print ("Added {} events".format(len(r_json)))
 
         if 'error' in r_json.keys():
             more_items = False
@@ -293,3 +292,43 @@ def load_config(configfile=None):
     # For test harness
     return config
             
+
+
+# ------------------------------
+def write_transformation(transform_type):
+    """ Write a file for the transformation. The transform_type should
+        be one of "rss", "newsletter", or "sidebar". If I was a better
+        programmer then I would force this.
+    """
+
+    load_config() 
+
+    cal_json = call_api() 
+
+    outjson = open(config.OUTJSON, "w", encoding='utf8')
+    json.dump(cal_json, outjson, indent=2, separators=(',', ': '))
+
+    generated_file = None
+    dest = None
+
+    if transform_type == "rss":
+        generated_file = generate_rss(cal_json)
+        dest = config.OUTRSS
+
+    elif transform_type == "newsletter":
+        generated_file = generate_newsletter(cal_json)
+        dest = config.OUTNEWS
+
+    elif transform_type == "sidebar":
+        generated_file = generate_sidebar(cal_json)
+        dest = config.OUTSIDEBAR
+
+    else:
+        raise NameError("Incorrect type '%s' listed" %
+          (transform_type,))
+
+
+    # Insert Windows newlines for dumb email clients
+    outfile = open(dest, "w", newline='\r\n', encoding='utf8')
+    outfile.write(generated_file)
+
