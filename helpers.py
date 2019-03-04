@@ -237,7 +237,6 @@ def load_config(configfile=None):
     # See: http://www.karoltomala.com/blog/?p=622
     DEFAULT_CONFIG_SOURCEFILE = os.path.join(
         os.getcwd(),
-        'secrets',
         'config.py',
         )
 
