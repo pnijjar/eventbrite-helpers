@@ -21,9 +21,9 @@ def print_from_template (s):
 def clean_eventbrite_url (url):
    """ Remove unneeded query info from Eventbrite URL
    """
+   base, params = url.split("?", 1)
 
-   # FIXME
-   return url
+   return base
 
 
 # ------------------------------
@@ -48,7 +48,7 @@ def get_iso8601_datetime (google_date):
     d = dateutil.parser.parse(google_date)
 
     # 2005-10-02 20:00
-    return "{} iso8601".format(d.strftime("%F %H:%M"))
+    return d.strftime("%F %H:%M")
 
 # ------------------------------
 def get_human_datestring (google_date): 
