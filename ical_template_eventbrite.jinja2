@@ -1,0 +1,26 @@
+BEGIN: VCALENDAR
+VERSION: 2.0
+
+{# RFC 5545? #}
+{# Timezone information goes here. Ugh. #}
+{% for item in feed_items %}
+BEGIN:VEVENT
+LOCATION:
+SUMMARY: 
+
+
+END:VEVENT
+{% endfor %}
+END:VCALENDAR
+
+{# Unknown if necessary: 
+  SEQUENCE
+  TRANSP: OPAQUE
+  LAST-MODIFIED
+  CREATED
+  UID {{ id }} @ {{ website }}
+  DTSTART
+  DTEND
+  DESCRIPTION
+  URL
+#}

@@ -3,3 +3,4 @@ venv/
 bg-research/
 *.swp
 __pycache__/
+output/
