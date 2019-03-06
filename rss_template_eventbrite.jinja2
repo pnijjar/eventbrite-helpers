@@ -40,8 +40,6 @@
                 &lt;/ul&gt;
                 &lt;/p&gt;
                 
-
-
                 &lt;p&gt;
                 &lt;strong&gt;Location: &lt;/strong&gt;
                 {%- if item['venue']['address']['localized_address_display'] is defined %}
@@ -50,6 +48,23 @@
                 {%- else -%}
                     unknown.
                 {% endif %}
+                &lt;/p&gt;
+           
+                {% if item['is_free'] == false -%}
+                    &lt;p&gt;
+                    &lt;strong&gt;Tickets: &lt;/strong&gt;
+                    {{- '$'-}}
+                    {{- item['ticket_availability']['minimum_ticket_price']['major_value'] -}}
+
+                    {%- if item['ticket_availability']['minimum_ticket_price']['major_value']
+                       != item['ticket_availability']['maximum_ticket_price']['major_value'] -%}
+                         {{- ' - $' -}}
+                         {{- item['ticket_availability']['maximum_ticket_price']['major_value'] -}}
+                    {%- endif -%}
+                    &lt;/p&gt;
+                {%- endif %}
+                
+                &lt;p&gt;
                 &lt;/p&gt;
 
                 {{ item['description']['html'] }}

@@ -128,7 +128,7 @@ def call_api():
         api_params = { 
           'token': config.API_TOKEN,
           'page' : curr_page,
-          'expand' : 'venue',
+          'expand' : 'venue,ticket_availability,description',
         }
 
         api_params.update(query_args)
