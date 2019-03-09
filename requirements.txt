@@ -1,5 +1,5 @@
-requests
-Jinja2
-pytz
-python_dateutil
+requests >= 2.21.0
+Jinja2 >= 2.10
+pytz >= 2018.9
+python_dateutil >= 2.8.0
 
