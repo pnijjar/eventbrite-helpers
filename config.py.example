@@ -54,6 +54,23 @@ WEBMASTER_NAME="Webmaster"
 # (Same folder as config.py?)
 TEMPLATE_DIR=SRCDIR
 
-
 # For datetime nonsense
 TIMEZONE="America/Toronto"
+
+
+# Do we attempt to get full descriptions from the
+# /events/(event_id)/description endpoint? 
+# This costs one API call PER EVENT, and you get 1000 events/hour
+GET_FULL_DESCRIPTIONS=True
+
+# What version of the API requires full description calls?
+# Anything higher than this will be subject to the additional API
+# call. 3.0.0 is fine, and as of this writing I only see 3.0.0 and
+# 3.7.0 
+SPLIT_DESCRIPTION_API="3.7.0"
+
+# What is the currency used in this application? I guess you are in 
+# trouble if there are multiple currencies. You can probably be more
+# sophisticated by translating the currency code (eg "CAN") to a
+# symbol, but this is good enough for me. 
+CURRENCY_SYMBOL='$'

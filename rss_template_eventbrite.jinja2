@@ -25,7 +25,7 @@
         <item>
             <title>{{ item['name']['text'] -}}
                {%- if item['is_free'] == false -%}
-                 {{- ' ($)'-}}
+                 {{- ' (' ~ feed_currency ~ ')'-}}
                {%- endif -%}
             </title>
             <link>{{ item['url'] | cleanurl }}</link>
@@ -53,12 +53,12 @@
                 {% if item['is_free'] == false -%}
                     &lt;p&gt;
                     &lt;strong&gt;Tickets: &lt;/strong&gt;
-                    {{- '$'-}}
+                    {{- feed_currency -}}
                     {{- item['ticket_availability']['minimum_ticket_price']['major_value'] -}}
 
                     {%- if item['ticket_availability']['minimum_ticket_price']['major_value']
                        != item['ticket_availability']['maximum_ticket_price']['major_value'] -%}
-                         {{- ' - $' -}}
+                         {{- ' - ' ~ feed_currency -}}
                          {{- item['ticket_availability']['maximum_ticket_price']['major_value'] -}}
                     {%- endif -%}
                     &lt;/p&gt;
@@ -66,8 +66,12 @@
                 
                 &lt;p&gt;
                 &lt;/p&gt;
-
-                {{ item['description']['html'] }}
+                {% if feed_full_descriptions -%}
+                    {{ item['full_description'] }}
+                {%- else -%}
+                    {{ item['description']['html'] }}
+                {%- endif -%}
+                 
             </description>
             <guid isPermaLink="false">{{ item['id'] }}</guid>
             <pubDate>{{ item['changed'] | rfc822 }}</pubDate>

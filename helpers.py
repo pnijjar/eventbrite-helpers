@@ -114,7 +114,7 @@ def call_api():
 
     BASE_URL = "https://www.eventbriteapi.com/v3"
 
-    api_url = "{}/events/search/".format(
+    search_api_url = "{}/events/search/".format(
       BASE_URL,
       )
 
@@ -133,7 +133,8 @@ def call_api():
 
         api_params.update(query_args)
 
-        r = requests.get(api_url, api_params)
+        r = requests.get(search_api_url, api_params)
+        r.raise_for_status()
         r_json = r.json() 
 
         event_list = event_list + r_json['events']
@@ -152,12 +153,78 @@ def call_api():
 
     #print("Number of events: {}\n\n".format(len(event_list)))
 
-    # Maybe this should be a config?
+    # Maybe this sort criterion should be a config?
     event_list.sort(key=lambda x: x['created'], reverse=True)
+
+
+    # Current as of API 3.7.0: the 'description' field is not actually
+    # the description any more. Instead you need to call another
+    # endpoint to get this information. You can batch these requests
+    # but the responses don't contain the original IDs! So
+    # frustrating. 
+
+    # The easy way to deal with this is to get the full description 
+    # for EVERYTHING, since everything will eventually migrate to the 
+    # new API. 
+    if config.GET_FULL_DESCRIPTIONS:
+        desc_ids = [] 
+        desc_params = []
+        for event in event_list:
+            if event['version'] >= config.SPLIT_DESCRIPTION_API: 
+                desc_ids.append(event['id'])
+                desc_params.append({
+                  'method': 'GET',
+                  'relative_url': "events/{}/description".format(
+                                     event['id'],
+                                     )
+                  })
+            else:
+                # This feels gross. 
+                event['full_description'] = event['description']['html']
+        
+        if desc_ids:
+            num_events = len(event_list)
+            #print("Got {} IDs".format(len(desc_ids)))
+            desc_api_params = {
+              'token': config.API_TOKEN,
+              }
+
+            batch_params = {
+              'batch': json.dumps(desc_params)
+              }
+
+            rd = requests.post(
+              "{}/batch/".format(BASE_URL,),
+              params=desc_api_params,
+              data=batch_params,
+              )
+            
+            # Throw an error if something went bad
+            rd.raise_for_status()
+
+            event_index = 0
+
+            for (id,resp) in zip(desc_ids,rd.json()):
+                # This is gross too. Let's hope that my calculations
+                # are correct and the event list does not get out of 
+                # order.
+                while event_list[event_index]['id'] != id:
+                    event_index = event_index + 1
+
+                if resp['code'] == 200:
+                    new_desc = json.loads(resp['body'])
+                    event_list[event_index]['full_description'] = \
+                      new_desc['description']
+                    # print("Set desc for id {}".format(id))
 
     return event_list
 
 
+# -----------------------------
+""" Print JSON nicely, because debugging is frustrating.
+"""
+def print_json(j):
+    print(json.dumps(j, indent=2, separators=(',', ': ')))
 
 
 # ------------------------------
@@ -200,6 +267,8 @@ def generate_rss(cal_dict):
       #"feed_logo_url" : config.LOGO,
       "feed_items" : cal_dict,
       "feed_selflink" : config.FEED_LINK,
+      "feed_currency" : config.CURRENCY_SYMBOL,
+      "feed_full_descriptions" : config.GET_FULL_DESCRIPTIONS,
       }
 
     output_rss = template.render(template_vars)
