@@ -2,4 +2,4 @@
 
 import helpers as h
 
-h.write_transformation('rss')
+h.write_transformation(['rss',])

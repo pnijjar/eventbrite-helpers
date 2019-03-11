@@ -373,10 +373,10 @@ def load_config(configfile=None):
 
 
 # ------------------------------
-def write_transformation(transform_type):
-    """ Write a file for the transformation. The transform_type should
-        be one of "rss", "newsletter", or "sidebar". If I was a better
-        programmer then I would force this.
+def write_transformation(transforms):
+    """ Write file(s) for the transformation. The transforms should
+        be a list of strings that contain 'rss' or 'ical'.
+        If I was a better programmer then I would force this.
     """
 
     load_config() 
@@ -386,23 +386,32 @@ def write_transformation(transform_type):
     outjson = open(config.OUTJSON, "w", encoding='utf8')
     json.dump(cal_json, outjson, indent=2, separators=(',', ': '))
 
-    generated_file = None
-    dest = None
+    destpairs = []
 
-    if transform_type == "rss":
-        generated_file = generate_rss(cal_json)
-        dest = config.OUTRSS
+    for transform_type in transforms:
+        if transform_type == "rss":
+            destpairs.append({
+              'generated_file': generate_rss(cal_json),
+              'dest': config.OUTRSS
+              })
 
-    elif transform_type == "ical":
-        generated_file = generate_ical(cal_json)
-        dest = config.OUTICAL
+        elif transform_type == "ical":
+            destpairs.append({
+              'generated_file': generate_ical(cal_json),
+              'dest': config.OUTRSS
+              })
 
-    else:
-        raise NameError("Incorrect type '%s' listed" %
-          (transform_type,))
+        else:
+            raise NameError("Incorrect type '%s' listed" %
+              (transform_type,))
 
-
-    # Insert Windows newlines for dumb email clients
-    outfile = open(dest, "w", newline='\r\n', encoding='utf8')
-    outfile.write(generated_file)
+    for outpair in destpairs:
+        # Insert Windows newlines for dumb email clients
+        outfile = open(
+          outpair['dest'], 
+          "w", 
+          newline='\r\n', 
+          encoding='utf8',
+          )
+        outfile.write(outpair['generated_file'])
 
