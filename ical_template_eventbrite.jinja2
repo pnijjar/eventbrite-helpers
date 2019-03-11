@@ -1,26 +1,59 @@
-BEGIN: VCALENDAR
-VERSION: 2.0
-
-{# RFC 5545? #}
-{# Timezone information goes here. Ugh. #}
-{% for item in feed_items %}
+BEGIN:VCALENDAR
+VERSION:2.0
+X-WR-CALNAME:{{ feed_title | ical_block("X-WR_CALNAME:") }}
+X-WR-TIMEZONE:{{ feed_timezone }}
+X-WR-CALDESC:{{ feed_description | ical_block("X-WR-CALDESC:") }}
+PRODID:-//Paul Nijjar//Eventbrite Helpers//EN
+{%- for item in feed_items %}
 BEGIN:VEVENT
-LOCATION:
-SUMMARY: 
+DTSTART:{{ item['start']['local'] | ical_datetime }}
+DTEND:{{ item['end']['local'] | ical_datetime }}
+DTSTAMP:{{ feed_pubdate | ical_datetime_utc }}
+UID:{{ item['id'] }}@{{ feed_website }}
+CREATED:{{ item['created'] | ical_datetime }}
+URL:{{ item['url'] | cleanurl | ical_block("URL:") }}
+DESCRIPTION:
+{%- if feed_full_descriptions -%}
+    {{- item['full_description'] | ical_block("DESCRIPTION:") -}}
+{%- else -%}
+    {{- item['description']['html'] | ical_block("DESCRIPTION:") -}}
+{%- endif %}
+{% if item['is_free'] == false -%}
+    {{' '}}\n<strong>Tickets:</strong>
+    {{- feed_currency -}}
+    {{- item['ticket_availability']['minimum_ticket_price']['major_value'] | ical_escape -}}
 
-
+    {%- if item['ticket_availability']['minimum_ticket_price']['major_value']
+       != item['ticket_availability']['maximum_ticket_price']['major_value'] -%}
+         {{- ' - ' ~ feed_currency | ical_escape -}}
+         {{- item['ticket_availability']['maximum_ticket_price']['major_value'] | ical_escape -}}
+    {%- endif -%}
+{%- endif %}
+LAST-MODIFIED:{{ item['changed'] | ical_datetime }}
+LOCATION: {%- if item['venue']['address']['localized_address_display'] is defined %}
+              {%- set loc = item['venue']['name'] ~ ', ' 
+                ~ item['venue']['address']['localized_address_display'] %}
+              {{- loc | ical_block("LOCATION:") -}}
+          {%- else -%}
+              unknown.
+          {%- endif %}
+SUMMARY:{{- item['name']['text'] | ical_block("SUMMARY: ($) ") -}}
+         {%- if item['is_free'] == false -%}
+           {{- ' (' ~ feed_currency ~ ')'-}}
+         {%- endif %}
 END:VEVENT
-{% endfor %}
+{%- endfor %}
 END:VCALENDAR
-
-{# Unknown if necessary: 
+{#- Unknown if necessary: 
   SEQUENCE
   TRANSP: OPAQUE
   LAST-MODIFIED
   CREATED
-  UID {{ id }} @ {{ website }}
+  UID {{ id }} @ {{ website }} -- need to strip https 
   DTSTART
   DTEND
   DESCRIPTION
   URL
+  RFC 5545?
+  Timezone information goes here. Ugh.
 #}

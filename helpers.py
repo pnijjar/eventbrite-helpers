@@ -7,6 +7,7 @@ import jinja2
 import pytz, datetime, dateutil.parser
 
 RSS_TEMPLATE="rss_template_eventbrite.jinja2"
+ICAL_TEMPLATE="ical_template_eventbrite.jinja2"
 
 
 # ------------------------------
@@ -49,6 +50,20 @@ def get_ical_datetime (local_date):
     d = dateutil.parser.parse(local_date)
 
     return d.strftime("%Y%m%dT%H%M00")
+
+
+# ------------------------------
+def get_ical_datetime_utc (local_date):
+    """ Convert some date (not necessarily from Google, but whatever)
+        to a format that iCal feeds want. 2019-03-03 04:23 becomes
+        20190303T042300 . This is UTC date.
+    """
+
+    d = dateutil.parser.parse(local_date)
+    d_utc = d.astimezone(pytz.timezone('UTC'))
+
+    return d_utc.strftime("%Y%m%dT%H%M00Z")
+
 
 
 # ------------------------------
@@ -116,6 +131,69 @@ def get_time_now():
 
     return time_now
 
+# ------------------------------
+def ical_escape (victim):
+    """ iCal has weird escaping rules. Implement them.
+        iCal also has weird block formatting rules. Ugh.
+    """
+    
+    if not victim:
+      return "EMPTY STRING PROVIDED TO ICAL_ESCAPE"
+    
+    # https://stackoverflow.com/questions/18935754/how-to-escape-special-characters-of-a-string-with-single-backslashes
+    return victim.translate(
+      str.maketrans({
+        "," : r"\,",
+        ";" : r"\;",
+        "\\": r"\\",
+        "\n": r"\n",
+        "\r": r"",
+        }))
+
+
+# ------------------------------
+def get_ical_block(text, prefix=""):
+    """ Use the weird iCal folding rules to break a big block of
+        text into escaped iCal format.
+
+        prefix is an optional prefix to take into consideration
+        when constructing the string (eg "DESCRIPTION:"). The 
+        prefix is NOT produced in the filter.
+        The length of the prefix should be shorter than the length 
+        of an iCalendar line (currently set to 74)
+    """
+
+    # Specified in https://tools.ietf.org/html/rfc5545#section-3.1
+    # This should not be bigger than 75.
+    MAX_LINE_LEN = 73
+
+    escaped_text = ical_escape(text)
+
+    # You had better hope that the length of the prefix is less than 
+    # the length of a line. 
+    tot_len = len(escaped_text) + len(prefix)
+
+    retval = ""
+    
+    line_no = 0
+    pos = 0
+
+    # There might be an off-by-one here but I think it does not
+    # matter. 
+    while (line_no * MAX_LINE_LEN) < tot_len:
+        if line_no == 0:
+            delta = MAX_LINE_LEN - len(prefix)
+            retval += escaped_text[0:delta]
+            pos += delta
+        else:
+            # Prefix with space
+            retval += "\n "
+            retval += escaped_text[pos:(pos + MAX_LINE_LEN)]
+            pos += MAX_LINE_LEN
+        
+        line_no += 1
+
+    return retval
 
 # ------------------------------
 """ This calls the Eventbrite search API. May return an error 
@@ -155,9 +233,7 @@ def call_api():
         elif 'pagination' in r_json.keys() \
           and r_json['pagination']['has_more_items'] :
             curr_page = curr_page + 1
-            # TEMP TEMP TEMP CHANGEME
-            # more_items = True
-            more_items = False
+            more_items = True
         else:
             more_items = False
 
@@ -238,6 +314,56 @@ def call_api():
 """
 def print_json(j):
     print(json.dumps(j, indent=2, separators=(',', ': ')))
+
+
+
+# ------------------------------
+def generate_ical(cal_dict):
+    """ Generate an iCal feed given a JSON file.
+    """
+
+    # --- Process template 
+
+    template_loader = jinja2.FileSystemLoader(
+        searchpath=config.TEMPLATE_DIR
+        )
+    template_env = jinja2.Environment( 
+        loader=template_loader,
+        autoescape=False,
+        )
+    template_env.filters['print'] = print_from_template
+    template_env.filters['cleanurl'] = clean_eventbrite_url
+    template_env.filters['ical_block'] = get_ical_block
+    template_env.filters['ical_datetime'] = get_ical_datetime
+    template_env.filters['ical_datetime_utc'] = get_ical_datetime_utc
+    template_env.filters['ical_escape'] = ical_escape
+
+    time_now = get_time_now()
+    time_now_formatted = time_now.strftime("%a, %d %b %Y %T %z")
+
+    # Remove http:// or https:// from the website.
+    # This produces a LIST, and we take the final part.
+    bare_website = config.WEBSITE.split("//")[-1]
+
+    template = template_env.get_template( ICAL_TEMPLATE ) 
+    template_vars = { 
+      "feed_title": config.FEED_TITLE,
+      "feed_description": config.FEED_DESCRIPTION,
+      "feed_webmaster" : config.WEBMASTER,
+      "feed_webmaster_name" : config.WEBMASTER_NAME,
+      "feed_builddate" : time_now_formatted,
+      "feed_pubdate" : time_now_formatted,
+      "feed_website" : bare_website,
+      "feed_items" : cal_dict,
+      "feed_selflink" : config.FEED_LINK,
+      "feed_currency" : config.CURRENCY_SYMBOL,
+      "feed_full_descriptions" : config.GET_FULL_DESCRIPTIONS,
+      "feed_timezone" : config.TIMEZONE,
+      }
+
+    output_ical = template.render(template_vars)
+
+    return output_ical
 
 
 # ------------------------------
@@ -398,7 +524,7 @@ def write_transformation(transforms):
         elif transform_type == "ical":
             destpairs.append({
               'generated_file': generate_ical(cal_json),
-              'dest': config.OUTRSS
+              'dest': config.OUTICAL
               })
 
         else:
