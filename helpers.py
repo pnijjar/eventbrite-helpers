@@ -393,7 +393,7 @@ def write_transformation(transform_type):
         generated_file = generate_rss(cal_json)
         dest = config.OUTRSS
 
-    elif transform_type = "ical":
+    elif transform_type == "ical":
         generated_file = generate_ical(cal_json)
         dest = config.OUTICAL
 
