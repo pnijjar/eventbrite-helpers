@@ -39,6 +39,17 @@ def get_rfc822_datestring (google_date):
     # Output the proper format
     return d.strftime("%a, %d %b %Y %T %z")
 
+# ------------------------------
+def get_ical_datetime (local_date):
+    """ Convert some date (not necessarily from Google, but whatever)
+        to a format that iCal feeds want. 2019-03-03 04:23 becomes
+        20190303T042300 . This is LOCAL DATE.
+    """
+
+    d = dateutil.parser.parse(local_date)
+
+    return d.strftime("%Y%m%dT%H%M00")
+
 
 # ------------------------------
 def get_iso8601_datetime (google_date):
@@ -144,7 +155,9 @@ def call_api():
         elif 'pagination' in r_json.keys() \
           and r_json['pagination']['has_more_items'] :
             curr_page = curr_page + 1
-            more_items = True
+            # TEMP TEMP TEMP CHANGEME
+            # more_items = True
+            more_items = False
         else:
             more_items = False
 
@@ -248,9 +261,6 @@ def generate_rss(cal_dict):
     template_env.filters['iso8601'] = get_iso8601_datetime 
     template_env.filters['print'] = print_from_template
     template_env.filters['cleanurl'] = clean_eventbrite_url
-
-
-
 
     time_now = get_time_now()
     time_now_formatted = time_now.strftime("%a, %d %b %Y %T %z")
@@ -383,13 +393,9 @@ def write_transformation(transform_type):
         generated_file = generate_rss(cal_json)
         dest = config.OUTRSS
 
-    elif transform_type == "newsletter":
-        generated_file = generate_newsletter(cal_json)
-        dest = config.OUTNEWS
-
-    elif transform_type == "sidebar":
-        generated_file = generate_sidebar(cal_json)
-        dest = config.OUTSIDEBAR
+    elif transform_type = "ical":
+        generated_file = generate_ical(cal_json)
+        dest = config.OUTICAL
 
     else:
         raise NameError("Incorrect type '%s' listed" %

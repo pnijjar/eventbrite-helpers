@@ -34,16 +34,20 @@ QUERY_ARGS = {
 # Used as the link field in the RSS feed
 WEBSITE='http://eventbrite.ca'
 
+# Give this feed a common basename
+FEED_BASENAME="eventbrite_kitchener"
+
 # Used as the location of this feed
-FEED_LINK="{}/eventbrite_kitchener.rss".format(WEBSITE)
+FEED_LINK="{}/{}.rss".format(WEBSITE, FEED_BASENAME,)
 
 FEED_TITLE="Eventbrite: Waterloo Region Firehose"
 FEED_DESCRIPTION="All Events within 15km of Kitchener"
 
 # Where to save the output, and what to call it
 SRCDIR=os.path.abspath(os.path.dirname(__file__))
-OUTRSS=os.path.join(SRCDIR, "output", "eventbrite_kitchener.rss")
-OUTJSON=os.path.join(SRCDIR, "output", "eventbrite_kitchener.json")
+OUTRSS=os.path.join(SRCDIR, "output", "{}.rss".format(FEED_BASENAME,))
+OUTJSON=os.path.join(SRCDIR, "output", "{}.json".format(FEED_BASENAME,))
+OUTICAL=os.path.join(SRCDIR, "output", "{}.ics".format(FEED_BASENAME,))
 
 # Who is responsible for this feed
 WEBMASTER="admin@example.com"
