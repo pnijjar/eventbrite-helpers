@@ -9,6 +9,7 @@ import pytz, datetime, dateutil.parser
 RSS_TEMPLATE="rss_template_eventbrite.jinja2"
 ICAL_TEMPLATE="ical_template_eventbrite.jinja2"
 
+LIMIT_FETCH = False
 
 # ------------------------------
 def print_from_template (s): 
@@ -233,7 +234,11 @@ def call_api():
         elif 'pagination' in r_json.keys() \
           and r_json['pagination']['has_more_items'] :
             curr_page = curr_page + 1
-            more_items = True
+
+            if LIMIT_FETCH:
+                more_items = False
+            else:
+                more_items = True
         else:
             more_items = False
 
@@ -462,14 +467,23 @@ def load_config(configfile=None):
         help='configuration file location',
         default=DEFAULT_CONFIG_SOURCEFILE,
         )
+    parser.add_argument('-s', '--small',
+        help='small: retrieve fewer entries',
+        action='store_true',
+        )
 
     args = parser.parse_args()
     if args.configfile:
         config_location = os.path.abspath(args.configfile)
 
-
     # http://stackoverflow.com/questions/11990556/python-how-to-make-global
     global config
+
+    if args.small:
+        # Ugh. Bad code smell. Should not use globals (but config.* is
+        # okay?)
+        global LIMIT_FETCH
+        LIMIT_FETCH = True
 
 
     # Blargh. You can load modules from paths, but the syntax is
