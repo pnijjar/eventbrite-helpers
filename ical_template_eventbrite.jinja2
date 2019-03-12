@@ -11,23 +11,31 @@ DTEND:{{ item['end']['local'] | ical_datetime }}
 DTSTAMP:{{ feed_pubdate | ical_datetime_utc }}
 UID:{{ item['id'] }}@{{ feed_website }}
 CREATED:{{ item['created'] | ical_datetime }}
+SUMMARY:{{- item['name']['text'] | ical_block("SUMMARY: ($) ") -}}
+         {%- if item['is_free'] == false -%}
+           {{- ' (' ~ feed_currency ~ ')'-}}
+         {%- endif %}
 URL:{{ item['url'] | cleanurl | ical_block("URL:") }}
 DESCRIPTION:
-{%- if feed_full_descriptions -%}
-    {{- item['full_description'] | ical_block("DESCRIPTION:") -}}
-{%- else -%}
-    {{- item['description']['html'] | ical_block("DESCRIPTION:") -}}
-{%- endif %}
-{% if item['is_free'] == false -%}
-    {{' '}}\n<strong>Tickets:</strong>
+{%- set cleanurl = item['url'] | cleanurl -%}
+{%- set fullurl = '<p><a href="' ~ cleanurl ~ '">' ~ cleanurl ~
+    '</a></p>' -%}
+{{- fullurl | ical_block("DESCRIPTION:") -}}
+{%- if item['is_free'] == false %}
+    {{' '}}\n<p><strong>Tickets:</strong>
     {{- feed_currency -}}
     {{- item['ticket_availability']['minimum_ticket_price']['major_value'] | ical_escape -}}
-
     {%- if item['ticket_availability']['minimum_ticket_price']['major_value']
        != item['ticket_availability']['maximum_ticket_price']['major_value'] -%}
          {{- ' - ' ~ feed_currency | ical_escape -}}
          {{- item['ticket_availability']['maximum_ticket_price']['major_value'] | ical_escape -}}
-    {%- endif -%}
+    {%- endif -%}</p>
+{%- endif %}
+{{ ' ' -}}
+{% if feed_full_descriptions -%}
+    {{- item['full_description'] | ical_block -}}
+{%- else -%}
+    {{- item['description']['html'] | ical_block -}}
 {%- endif %}
 LAST-MODIFIED:{{ item['changed'] | ical_datetime }}
 LOCATION: {%- if item['venue']['address']['localized_address_display'] is defined %}
@@ -37,10 +45,6 @@ LOCATION: {%- if item['venue']['address']['localized_address_display'] is define
           {%- else -%}
               unknown.
           {%- endif %}
-SUMMARY:{{- item['name']['text'] | ical_block("SUMMARY: ($) ") -}}
-         {%- if item['is_free'] == false -%}
-           {{- ' (' ~ feed_currency ~ ')'-}}
-         {%- endif %}
 END:VEVENT
 {%- endfor %}
 END:VCALENDAR
