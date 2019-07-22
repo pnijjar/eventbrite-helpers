@@ -5,7 +5,6 @@ import json
 import requests
 import jinja2
 import pytz, datetime, dateutil.parser
-import bs4
 import re
 
 RSS_TEMPLATE="rss_template_eventbrite.jinja2"
@@ -434,11 +433,7 @@ def generate_rss(cal_dict):
       "feed_full_descriptions" : config.GET_FULL_DESCRIPTIONS,
       }
 
-    generated_rss = template.render(template_vars)
-
-    # Sometimes there are XML errors in the descriptions.
-    # Clean the entire feed at the end. 
-    output_rss = str(bs4.BeautifulSoup(generated_rss, 'xml'))
+    output_rss = template.render(template_vars)
 
     return str(output_rss)
 

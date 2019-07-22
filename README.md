@@ -17,9 +17,6 @@ Deployment
   have ever made an Eventbrite account as an event attendee you can
   use the same login to get a key here. You only need the "Anonymous
   access OAuth Token".
-- In order to validate the RSS feeds, `lxml` is required, but this
-  depends on the `libxml2-dev` and `libxslt1-dev` packages. So install
-  them: `apt install libxml2-dev libxslt1-dev build-essential`.
 - Use `virtualenv` to set up a Python 3 environment: `virtualenv -p
   /usr/bin/python3 venv`
 - Activate the environment: `source venv/bin/activate`
