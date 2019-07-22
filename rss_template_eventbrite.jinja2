@@ -23,12 +23,12 @@
 
         {% for item in feed_items %}
         <item>
-            <title>{{ item['name']['text'] -}}
+            <title>{{ item['name']['text'] | cleanxml -}}
                {%- if item['is_free'] == false -%}
                  {{- ' (' ~ feed_currency ~ ')'-}}
                {%- endif -%}
             </title>
-            <link>{{ item['url'] | cleanurl }}</link>
+            <link>{{ item['url'] | cleanurl | cleanxml}}</link>
             <description>
 
                 &lt;p&gt;
@@ -43,8 +43,8 @@
                 &lt;p&gt;
                 &lt;strong&gt;Location: &lt;/strong&gt;
                 {%- if item['venue']['address']['localized_address_display'] is defined %}
-                    {{ item['venue']['name'] }}{{', '}}
-                    {{ item['venue']['address']['localized_address_display'] }}
+                    {{ item['venue']['name'] | cleanxml }}{{', '}}
+                    {{ item['venue']['address']['localized_address_display'] | cleanxml }}
                 {%- else -%}
                     unknown.
                 {% endif %}
@@ -67,9 +67,9 @@
                 &lt;p&gt;
                 &lt;/p&gt;
                 {% if feed_full_descriptions -%}
-                    {{ item['full_description'] }}
+                    {{ item['full_description'] | cleanxml }}
                 {%- else -%}
-                    {{ item['description']['html'] }}
+                    {{ item['description']['html'] | cleanxml }}
                 {%- endif -%}
                  
             </description>

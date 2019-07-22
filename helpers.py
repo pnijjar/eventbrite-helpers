@@ -6,9 +6,16 @@ import requests
 import jinja2
 import pytz, datetime, dateutil.parser
 import bs4
+import re
 
 RSS_TEMPLATE="rss_template_eventbrite.jinja2"
 ICAL_TEMPLATE="ical_template_eventbrite.jinja2"
+
+# See:
+# https://stackoverflow.com/questions/730133/invalid-characters-in-xml
+INVALID_XML_CHARS=re.compile(
+  r'[^\u0009\u000a\u000d\u0020-\ud7ff\ue000-\uFFFD\u10000-\u10ffff]'
+  )
 
 LIMIT_FETCH = False
 
@@ -133,6 +140,18 @@ def get_time_now():
 
     return time_now
 
+
+# ------------------------------
+def remove_invalid_xml_chars (victim):
+    """ Some control characters are prohibited in XML. Delete them.
+    """
+    
+    if not victim:
+        return ""
+
+    return re.sub(INVALID_XML_CHARS, "", victim)
+
+
 # ------------------------------
 def ical_escape (victim):
     """ iCal has weird escaping rules. Implement them.
@@ -140,7 +159,7 @@ def ical_escape (victim):
     """
     
     if not victim:
-      return "EMPTY STRING PROVIDED TO ICAL_ESCAPE"
+        return "EMPTY STRING PROVIDED TO ICAL_ESCAPE"
     
     # https://stackoverflow.com/questions/18935754/how-to-escape-special-characters-of-a-string-with-single-backslashes
     return victim.translate(
@@ -393,6 +412,8 @@ def generate_rss(cal_dict):
     template_env.filters['iso8601'] = get_iso8601_datetime 
     template_env.filters['print'] = print_from_template
     template_env.filters['cleanurl'] = clean_eventbrite_url
+    template_env.filters['cleanxml'] = remove_invalid_xml_chars
+
 
     time_now = get_time_now()
     time_now_formatted = time_now.strftime("%a, %d %b %Y %T %z")
