@@ -18,6 +18,11 @@ INVALID_XML_CHARS=re.compile(
 
 LIMIT_FETCH = False
 
+# 406: not acceptable (you is blocked)
+# 429: past rate limit (ugh)
+EVENTBRITE_LIMIT_STATUSES = [406, 429,]
+
+
 # ------------------------------
 def print_from_template (s): 
     """ Show the value of a string that is being processed in a 
@@ -243,6 +248,15 @@ def call_api():
         api_params.update(query_args)
 
         r = requests.get(search_api_url, api_params)
+
+        if r.status_code in EVENTBRITE_LIMIT_STATUSES:
+            more_items = False
+            print("Received status code {} "
+                  "after fetching {} events".format(
+                    r.status_code,
+                    len(event_list),))
+            break
+
         r.raise_for_status()
         r_json = r.json() 
 
