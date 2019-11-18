@@ -238,6 +238,8 @@ def call_api():
     query_args = config.QUERY_ARGS
     event_list = []
 
+    num_api_calls = 0
+
     while more_items: 
         api_params = { 
           'token': config.API_TOKEN,
@@ -252,12 +254,15 @@ def call_api():
         if r.status_code in EVENTBRITE_LIMIT_STATUSES:
             more_items = False
             print("Received status code {} "
-                  "after fetching {} events".format(
+                  "after fetching {} events with {} "
+                  "API calls".format(
                     r.status_code,
-                    len(event_list),))
+                    len(event_list),
+                    num_api_calls))
             break
 
         r.raise_for_status()
+        num_api_calls = num_api_calls + 1
         r_json = r.json() 
 
         event_list = event_list + r_json['events']
