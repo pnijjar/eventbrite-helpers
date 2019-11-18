@@ -6,3 +6,6 @@
 - The currency is assumed to be dollars. I guess we can have a 
   variable to set this in config.py
  
+- Eventbrite has severely limited the search API, as of October 2019.
+  So the RSS feeds have gotten a lot shorter. Ideally we would 
+  retrieve events without destroying the old feed.
