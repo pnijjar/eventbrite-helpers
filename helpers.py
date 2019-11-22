@@ -78,6 +78,16 @@ def get_ical_datetime_utc (local_date):
     return d_utc.strftime("%Y%m%dT%H%M00Z")
 
 
+# -------------------------------
+def datetime_to_utc_string (d):
+    """ Unlike everything else, take a DATETIME and produce
+        a string representing the datetime as UTC.
+    """
+
+    d_utc = d.astimezone(pytz.timezone('UTC'))
+    return d_utc.strftime(""%FT%H:%M:%SZ")
+
+
 
 # ------------------------------
 def get_iso8601_datetime (google_date):
@@ -236,6 +246,15 @@ def call_api():
     more_items = True
 
     query_args = config.QUERY_ARGS
+
+    if config.QUERY_EVENTS_CHANGED_SINCE: 
+        # Make a query relative to now, minus the delta.
+        now = get_time_now()
+        cutoff = now - config.QUERY_EVENTS_CHANGED_SINCE
+        
+        query_args['date_modified.range_start'] = datetime_to_utc_string(cutoff)
+
+
     event_list = []
 
     num_api_calls = 0
