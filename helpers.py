@@ -85,7 +85,7 @@ def datetime_to_utc_string (d):
     """
 
     d_utc = d.astimezone(pytz.timezone('UTC'))
-    return d_utc.strftime(""%FT%H:%M:%SZ")
+    return d_utc.strftime("%FT%H:%M:%SZ")
 
 
 
@@ -568,7 +568,108 @@ def load_config(configfile=None):
 
     # For test harness
     return config
+
+
+# ------------------------------
+def sort_json_events(events):
+    """ Given a list of Eventbrite events, sort them in 
+        descending order by ID and produce the result.
+    """
+
+    sorted_events = sorted(
+      events, 
+      key=lambda item: item['id'],
+      reverse=True,
+      )
+    return sorted_events
+       
+
             
+# ------------------------------
+def merge_and_prune(old_items, update_items):
+    """ Given a list of previously_processed events and new 
+        events, produce a merge of the two, AND get rid of 
+        any events that are stale (ie end before the 
+        current time)
+
+        Both lists must be sorted in DESCENDING order according
+        to Eventbrite ID. 
+    """
+
+    too_old = get_time_now()
+
+
+    # Mein Gott. Are we back in OOT?
+    pos_old = 0
+    pos_upd = 0
+    max_old = len(old_items)
+    max_upd = len(update_items)
+
+    merged_items = []
+
+    num_dropped = 0
+    num_dups = 0
+
+    while pos_old < max_old or pos_upd < max_upd:
+
+        target = None
+        
+        if pos_old < max_old and pos_upd < max_upd:
+
+            key_old = old_items[pos_old]['id']
+            key_upd = update_items[pos_upd]['id']
+
+            if key_old > key_upd:
+                # Old is strictly bigger
+                target = old_items[pos_old]
+                pos_old = pos_old + 1
+
+            elif key_old < key_upd:
+                target = update_items[pos_upd]
+                pos_upd = pos_upd + 1
+
+            elif key_old == key_upd:
+                # Duplicate! The update wins. Both 
+                # sources get incremented.
+                target = update_items[pos_upd]
+                pos_old = pos_old + 1
+                pos_upd = pos_upd + 1
+                num_dups = num_dups + 1
+
+            else:
+                raise AssertionError("keys don't compare")
+
+        elif pos_old < max_old:
+            # Update is done. Process old items only.
+            target = old_items[pos_old]
+            pos_old = pos_old + 1
+
+        elif pos_upd < max_upd:
+            target = update_items[pos_upd]
+            pos_upd = pos_upd + 1
+
+        else:
+           raise AssertionError(
+             "Both lists are finished but should not be!"
+             )
+
+        if dateutil.parser.parse(target['end']['utc']) >= too_old:
+            merged_items.append(target)
+        else:
+            num_dropped = num_dropped + 1
+
+    print(
+      "After merge: num_old = {}, num_updated = {}, "
+      "num_dups = {}, num_dropped = {}, "
+      "num_in_merge = {}".format(
+        max_old,
+        max_upd,
+        num_dups,
+        num_dropped,
+        len(merged_items)
+      ))
+
+    return merged_items
 
 
 # ------------------------------
@@ -580,7 +681,23 @@ def write_transformation(transforms):
 
     load_config() 
 
-    cal_json = call_api() 
+    # Try to load EXISTING json file. 
+    # Man is this sketchy. I am not testing for malicious input!
+    old_json = []
+
+    if os.path.isfile(config.OUTJSON):
+        with open(config.OUTJSON, "r", encoding='utf8') as injson:
+            content = json.load(injson)
+            old_json = sort_json_events(content)
+
+    new_json_unsorted = call_api() 
+    #new_json_unsorted = []
+    new_json = sort_json_events(new_json_unsorted)
+
+
+    # Hold your horses. Now we need to process the JSON file and get
+    # rid of old stuff. 
+    cal_json = merge_and_prune(old_json, new_json)
 
     outjson = open(config.OUTJSON, "w", encoding='utf8')
     json.dump(cal_json, outjson, indent=2, separators=(',', ': '))
