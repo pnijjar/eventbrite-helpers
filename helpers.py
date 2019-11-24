@@ -6,6 +6,7 @@ import requests
 import jinja2
 import pytz, datetime, dateutil.parser
 import re
+import logging
 
 RSS_TEMPLATE="rss_template_eventbrite.jinja2"
 ICAL_TEMPLATE="ical_template_eventbrite.jinja2"
@@ -21,7 +22,6 @@ LIMIT_FETCH = False
 # 406: not acceptable (you is blocked)
 # 429: past rate limit (ugh)
 EVENTBRITE_LIMIT_STATUSES = [406, 429,]
-
 
 # ------------------------------
 def print_from_template (s): 
@@ -247,10 +247,11 @@ def call_api():
 
     query_args = config.QUERY_ARGS
 
-    if config.QUERY_EVENTS_CHANGED_SINCE: 
+    if config.QUERY_EVENTS_CHANGED_DAYS: 
+        since = datetime.timedelta(days=config.QUERY_EVENTS_CHANGED_DAYS)
         # Make a query relative to now, minus the delta.
         now = get_time_now()
-        cutoff = now - config.QUERY_EVENTS_CHANGED_SINCE
+        cutoff = now - since
         
         query_args['date_modified.range_start'] = datetime_to_utc_string(cutoff)
 
@@ -272,7 +273,7 @@ def call_api():
 
         if r.status_code in EVENTBRITE_LIMIT_STATUSES:
             more_items = False
-            print("Received status code {} "
+            logging.warn("Received status code {} "
                   "after fetching {} events with {} "
                   "API calls".format(
                     r.status_code,
@@ -535,6 +536,9 @@ def load_config(configfile=None):
     if args.configfile:
         config_location = os.path.abspath(args.configfile)
 
+
+
+
     # http://stackoverflow.com/questions/11990556/python-how-to-make-global
     global config
 
@@ -565,6 +569,14 @@ def load_config(configfile=None):
     else:
         import imp
         config = imp.load_source( 'config', config_location,)
+
+    # Set up logging
+    logging.basicConfig(
+      filename=config.LOGFILE,
+      level=logging.INFO,
+      format='%(asctime)s %(levelname)s: %(message)s',
+      datefmt='%Y-%m-%d %H:%M {}'.format(args.configfile),
+      )
 
     # For test harness
     return config
@@ -658,7 +670,7 @@ def merge_and_prune(old_items, update_items):
         else:
             num_dropped = num_dropped + 1
 
-    print(
+    logging.info(
       "After merge: num_old = {}, num_updated = {}, "
       "num_dups = {}, num_dropped = {}, "
       "num_in_merge = {}".format(

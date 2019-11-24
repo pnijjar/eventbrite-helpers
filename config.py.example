@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import os
-import datetime
 
 # The EventBrite API token we need
 # The anonymous access token is fine. 
@@ -31,13 +30,13 @@ QUERY_ARGS = {
   'q' : "python",
   }
 
-# Include only events changed since this time delta.
-# Set to None if you want as much as you can get. 
+# Include only events changed since this many days. 
+# Set to None if you want as much as you can get. Do not set to 0
+# unless you like empty feeds. 
 
-# A positive delta is subtracted from the time now. So 
-# datetime.timedelta(days=2) means events changed in 
-# the last two days.
-QUERY_EVENTS_CHANGED_SINCE=datetime.timedelta(days=3)
+# eg: a value of 2 means you want events changed in the last two days.
+
+QUERY_EVENTS_CHANGED_DAYS=3
 
 # Used as the link field in the RSS feed
 WEBSITE='http://eventbrite.ca'
@@ -56,6 +55,9 @@ SRCDIR=os.path.abspath(os.path.dirname(__file__))
 OUTRSS=os.path.join(SRCDIR, "output", "{}.rss".format(FEED_BASENAME,))
 OUTJSON=os.path.join(SRCDIR, "output", "{}.json".format(FEED_BASENAME,))
 OUTICAL=os.path.join(SRCDIR, "output", "{}.ics".format(FEED_BASENAME,))
+
+# Where to log events
+LOGFILE=os.path.join(SRCDIR, "logs", "eventbrite.log")
 
 # Who is responsible for this feed
 WEBMASTER="admin@example.com"
@@ -86,3 +88,4 @@ SPLIT_DESCRIPTION_API="3.7.0"
 # sophisticated by translating the currency code (eg "CAN") to a
 # symbol, but this is good enough for me. 
 CURRENCY_SYMBOL='$'
+
