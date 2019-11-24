@@ -52,6 +52,21 @@ those?
 https://stackoverflow.com/questions/18935754/how-to-escape-special-characters
 
 https://evertpot.com/escaping-in-vcards-and-icalendar/
+Also adds carets for newline (^n), caret (^^) and double quote (^') 
+
+https://stackoverflow.com/questions/1590368/should-a-colon-character-be-escaped-in-text-values-in-icalendar-rfc2445
+comma, semicolon, slash, newline
+
+### To do for iCal
+
+- (DONE?) Escape special characters
+- (DONE?) Figure out minimal iCal format that works
+- (DONE) Set up jinja processing 
+- Set timezone in date fields (ugh)
+
+
+http://icalvalid.wikidot.com/
+
 
 
 iCal readers
@@ -59,7 +74,7 @@ iCal readers
 claws-mail with vcalendar plugin (no calendar display)
 (It does not render HTML well)
 
-
+Probably I should just use Google calendar
 
 
 Bugs
