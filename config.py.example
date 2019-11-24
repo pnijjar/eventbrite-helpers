@@ -59,6 +59,10 @@ OUTICAL=os.path.join(SRCDIR, "output", "{}.ics".format(FEED_BASENAME,))
 # Where to log events
 LOGFILE=os.path.join(SRCDIR, "logs", "eventbrite.log")
 
+# What level to use. Default is 'info'. Other 
+# permitted values: 'warning', 'error', 'critical', 'debug'
+LOGLEVEL='info'
+
 # Who is responsible for this feed
 WEBMASTER="admin@example.com"
 WEBMASTER_NAME="Webmaster"

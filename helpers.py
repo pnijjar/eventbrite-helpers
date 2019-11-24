@@ -37,6 +37,7 @@ def clean_eventbrite_url (url):
    """
    base, params = url.split("?", 1)
 
+
    return base
 
 
@@ -570,10 +571,23 @@ def load_config(configfile=None):
         import imp
         config = imp.load_source( 'config', config_location,)
 
+    loglevel = logging.INFO
+
+    # Notice how invalid input will stay at INFO. 
+    if config.LOGLEVEL == 'debug':
+        loglevel = logging.DEBUG
+    elif config.LOGLEVEL == 'error':
+        loglevel = logging.ERROR
+    elif config.LOGLEVEL == 'warning':
+        loglevel = logging.WARNING
+    elif config.LOGLEVEL == 'critical':
+        loglevel = logging.CRITICAL
+
     # Set up logging
+    # (This is the wrong place to do this, but oh well)
     logging.basicConfig(
       filename=config.LOGFILE,
-      level=logging.INFO,
+      level=loglevel,
       format='%(asctime)s %(levelname)s: %(message)s',
       datefmt='%Y-%m-%d %H:%M {}'.format(args.configfile),
       )
