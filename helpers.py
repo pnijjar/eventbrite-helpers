@@ -146,6 +146,18 @@ def get_human_timeonly (google_date):
     #  8:00pm
     return d.strftime("%l:%M%P")
 
+# ------------------------------
+def get_min_since_epoch (google_date):
+    """ Tell me how many minutes have passed since Jan 1, 1970.
+        This can give me a poor-man's timedelta, and will break 
+        in 2038.
+    """
+    d = dateutil.parser.parse(google_date)
+
+    num_minutes = int(d.strftime("%s")) // 60
+    
+    return num_minutes
+
 
 # ------------------------------
 def get_time_now():
@@ -452,6 +464,7 @@ def generate_rss(cal_dict):
     template_env.filters['print'] = print_from_template
     template_env.filters['cleanurl'] = clean_eventbrite_url
     template_env.filters['cleanxml'] = remove_invalid_xml_chars
+    template_env.filters['epochminutes'] = get_min_since_epoch
 
 
     time_now = get_time_now()
