@@ -532,11 +532,14 @@ def load_config(configfile=None):
         help='small: retrieve fewer entries',
         action='store_true',
         )
+    parser.add_argument('-v', '--verbose',
+        help='print debug info to log and stdout',
+        action='store_true',
+        )
 
     args = parser.parse_args()
     if args.configfile:
         config_location = os.path.abspath(args.configfile)
-
 
 
 
@@ -583,14 +586,23 @@ def load_config(configfile=None):
     elif config.LOGLEVEL == 'critical':
         loglevel = logging.CRITICAL
 
+    log_handlers = [logging.FileHandler(config.LOGFILE)]
+
+    if args.verbose:
+        loglevel = logging.DEBUG
+        log_handlers.append(logging.StreamHandler())
+
+
     # Set up logging
     # (This is the wrong place to do this, but oh well)
     logging.basicConfig(
-      filename=config.LOGFILE,
+      handlers=log_handlers,
       level=loglevel,
       format='%(asctime)s %(levelname)s: %(message)s',
       datefmt='%Y-%m-%d %H:%M {}'.format(args.configfile),
       )
+
+
 
     # For test harness
     return config
