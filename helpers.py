@@ -19,6 +19,7 @@ INVALID_XML_CHARS=re.compile(
   )
 
 LIMIT_FETCH = False
+SKIP_API = False
 
 # 406: not acceptable (you is blocked)
 # 429: past rate limit (ugh)
@@ -515,12 +516,19 @@ def get_event_from_api(id):
        }
 
 
-    event = call_api(event_api_url, event_api_params)
+    try:
+        event = call_api(event_api_url, event_api_params)
 
-    # TODO: Get rid of this option?
-    if config.GET_FULL_DESCRIPTIONS:
-        desc = call_api(desc_api_url, desc_api_params)
-        event['full_description'] = desc['description']
+        # TODO: Get rid of this option?
+        if config.GET_FULL_DESCRIPTIONS:
+            desc = call_api(desc_api_url, desc_api_params)
+            event['full_description'] = desc['description']
+    
+    except HTTPError as e:
+        # Failed. Now what?
+        # The description may or may not be present. Ugh.
+        logging.error("get_event_from_api: Received API error: {}".format(e))
+        return None
 
     return event
 
@@ -685,6 +693,10 @@ def load_config(configfile=None):
         help='small: retrieve fewer entries',
         action='store_true',
         )
+    parser.add_argument('--skip-api',
+        help='do not call online API -- use cached data only',
+        action='store_true',
+        )
     parser.add_argument('-v', '--verbose',
         help='print debug info to log and stdout',
         action='store_true',
@@ -704,7 +716,10 @@ def load_config(configfile=None):
         # okay?)
         global LIMIT_FETCH
         LIMIT_FETCH = True
-
+    
+    if args.skip_api:
+        global SKIP_API
+        SKIP_API = True
 
     # Blargh. You can load modules from paths, but the syntax is
     # different depending on the version of python. 
@@ -983,6 +998,8 @@ def incorporate_events(event_dict, new_events):
         new_events: raw downloaded events
     """
 
+    timezone = pytz.timezone(config.TIMEZONE)
+
     for event in new_events:
         id = url_to_id(event['url'])
         too_far = False
@@ -990,7 +1007,7 @@ def incorporate_events(event_dict, new_events):
         if not event_in_boundary(event):
             logging.debug(
               "Rejected event" 
-              "{}: not in boundary".format(id)
+              " {}: not in boundary".format(id)
               )
             too_far = True
 
@@ -1000,13 +1017,15 @@ def incorporate_events(event_dict, new_events):
             #logging.debug("Event {} already in event_dict".format(id))
             continue
 
-
-        # TODO: Check if event is in past
-        
         now = get_time_now().strftime("%FT%T")
 
         if not too_far:
             api_event = get_event_from_api(id)
+
+            if api_event is None:
+                # Something went bad. Better bail 
+                logging.warn("API call failed. Stopping fetch.")
+                break
 
             # TODO: Check against blacklist and mark as filtered
             filtered = False
@@ -1015,8 +1034,13 @@ def incorporate_events(event_dict, new_events):
         else:
             # Make a dummy event cheaply
             api_event = {}
+
+            # Make an aware date 
+            end_date_raw = datetime.parser.parse(event['endDate'])
+            end_date = timezone.localize(end_date_raw)
+
             api_event['end'] = {
-              'utc': event['endDate'],
+              'utc': get_rfc822_datestring(end_date)
               }
 
         api_event['extrainfo'] = { 
@@ -1046,18 +1070,31 @@ def prepare_event_lists(event_dict):
     non_filtered_events = []
     filtered_events = []
 
-    too_old = get_time_now()
+    too_old = get_time_now() - datetime.timedelta(days=1)
+    timezone = pytz.timezone(config.TIMEZONE)
 
 
     for id, event in event_dict.items():
-        if dateutil.parser.parse(event['end']['utc']) < too_old:
+        end_date = dateutil.parser.parse(event['end']['utc'])
+
+        """
+        # Naive
+        if end_date_raw.tzinfo is None or \
+          end_date_raw.tzinfo.utcoffset(end_date_raw) is None:
+            
+            end_date = timezone.localize(end_date_raw)
+        else:
+            end_date = end_date_raw
+        """
+
+
+        if end_date < too_old:
             ids_to_delete.append(id)
             logging.debug("Dropped event {} with end time {}".format(
               id,
               event['end']['utc']
               ))
-        elif 'too_far' in event['extrainfo'] and \
-          event['extrainfo']['too_far']:
+        elif event['extrainfo']['too_far']:
             continue
         elif event['extrainfo']['filtered_out']:
             filtered_events.append(event)
@@ -1109,12 +1146,17 @@ def write_transformation(transforms):
         with open(config.OUT_EVENT_DICT, "r", encoding='utf8') as injson:
             event_dict = json.load(injson)
 
+    if not SKIP_API: # Yay double negative
+        raw_events = download_events()
+        incorporate_events(event_dict, raw_events)
 
-    #raw_events = download_events()
-    #incorporate_events(event_dict, raw_events)
+        logging.info("Made {} API calls".format(_num_api_calls))
+
+    # Save early and late, in case there are bugs in between.
+    out_events = open(config.OUT_EVENT_DICT, "w", encoding='utf8')
+    json.dump(event_dict, out_events, indent=2, separators=(',', ': '))
 
     nice_json, filtered_json, old_ids = prepare_event_lists(event_dict)
-
     clean_event_dict(event_dict, old_ids)
 
     out_events = open(config.OUT_EVENT_DICT, "w", encoding='utf8')
@@ -1169,7 +1211,6 @@ def write_transformation(transforms):
           )
         outfile.write(outpair['generated_file'])
 
-    logging.info("Made {} API calls".format(_num_api_calls))
 
 
 
