@@ -903,9 +903,24 @@ def extract_events(page):
         logging.warn( "Uh oh. Looked for JSON and"
           " found {} possible elements.".format(num_candidates))
 
-    api_data = json.loads(event_script[0].string)
+    best_candidate = None
 
-    return api_data
+    for candidate in event_script:
+        can_json = json.loads(candidate.string)
+
+        # Events must be in a list
+        if isinstance(can_json, list) and \
+          len(can_json) >= 1 and \
+          '@type' in can_json[0] and \
+          can_json[0]['@type'] == 'Event':
+            
+            if best_candidate:
+                logging.warn("Uh oh. There is already a candidate!"
+                  "Taking latest one, I guess.")
+
+            best_candidate = can_json
+          
+    return best_candidate            
 
     
 # -------
@@ -978,12 +993,14 @@ def download_events():
             total_pages = 1
             
         events = extract_events(page)
-        events = traverse_pages(
-          target, 
-          events, 
-          total_pages,
-          config.MAX_EVENTBRITE_PAGES_TO_FETCH
-          )
+
+        if not LIMIT_FETCH:
+            events = traverse_pages(
+              target, 
+              events, 
+              total_pages,
+              config.MAX_EVENTBRITE_PAGES_TO_FETCH
+              )
         logging.debug("Got {} items!".format(len(events)))
 
         all_events = all_events + events
@@ -1005,10 +1022,17 @@ def incorporate_events(event_dict, new_events):
     for event in new_events:
         id = url_to_id(event['url'])
         too_far = False
+        filtered = False
 
         # Make an aware date 
         end_date_raw = dateutil.parser.parse(event['endDate'])
-        end_date = timezone.localize(end_date_raw)
+
+        if end_date_raw.tzinfo is None or \
+          end_date_raw.tzinfo.utcoffset(end_date_raw) is None:
+
+            end_date = timezone.localize(end_date_raw)
+        else:
+            end_date = end_date_raw
 
         if end_date < recent:
             logging.debug("{}: ends {} and now is {}. Past?".format(
@@ -1043,7 +1067,6 @@ def incorporate_events(event_dict, new_events):
                 break
 
             # TODO: Check against blacklist and mark as filtered
-            filtered = False
             if api_event["organizer_id"] in config.FILTERED_ORGANIZERS:
                 filtered = True
         else:
@@ -1166,6 +1189,7 @@ def write_transformation(transforms):
         logging.info("Made {} API calls".format(_num_api_calls))
 
     # Save early and late, in case there are bugs in between.
+    # TODO: Get rid of this
     out_events = open(config.OUT_EVENT_DICT, "w", encoding='utf8')
     json.dump(event_dict, out_events, indent=2, separators=(',', ': '))
 
