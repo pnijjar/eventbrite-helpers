@@ -789,14 +789,14 @@ def sort_json_events(events):
        
 
 # -----------------------------
-def sort_json_events_by_start(events):
+def sort_json_events_by_pubdate(events):
     """ Given a list of Eventbrite events, sort them in 
-        descending order by start time and produce the result.
+        descending order by published date and produce the result.
     """
 
     sorted_events = sorted(
       events,
-      key=lambda item: item['start']['utc'],
+      key=lambda item: item['published'],
       reverse=True,
       )
 
@@ -999,10 +999,24 @@ def incorporate_events(event_dict, new_events):
     """
 
     timezone = pytz.timezone(config.TIMEZONE)
+    now = get_time_now()
+    recent = now - datetime.timedelta(days=1)
 
     for event in new_events:
         id = url_to_id(event['url'])
         too_far = False
+
+        # Make an aware date 
+        end_date_raw = dateutil.parser.parse(event['endDate'])
+        end_date = timezone.localize(end_date_raw)
+
+        if end_date < recent:
+            logging.debug("{}: ends {} and now is {}. Past?".format(
+              id,
+              end_date,
+              recent))
+            continue
+
 
         if not event_in_boundary(event):
             logging.debug(
@@ -1011,13 +1025,14 @@ def incorporate_events(event_dict, new_events):
               )
             too_far = True
 
+
+
+
         if id in event_dict:
             # TODO: Compare against (short) description. 
             # If they are different then need to update. 
             #logging.debug("Event {} already in event_dict".format(id))
             continue
-
-        now = get_time_now().strftime("%FT%T")
 
         if not too_far:
             api_event = get_event_from_api(id)
@@ -1035,18 +1050,15 @@ def incorporate_events(event_dict, new_events):
             # Make a dummy event cheaply
             api_event = {}
 
-            # Make an aware date 
-            end_date_raw = datetime.parser.parse(event['endDate'])
-            end_date = timezone.localize(end_date_raw)
 
             api_event['end'] = {
-              'utc': get_rfc822_datestring(end_date)
+              'utc': end_date.strftime("%FT%H:%M:%SZ")
               }
 
         api_event['extrainfo'] = { 
           'too_far' : too_far,
           'filtered_out' : filtered,
-          'added' : now,
+          'added' : now.strftime("%FT%T"),
           }
 
         api_event['pulled_event'] = event
@@ -1102,10 +1114,11 @@ def prepare_event_lists(event_dict):
             non_filtered_events.append(event)
 
         
-    non_filtered_events = sort_json_events_by_start(
+    non_filtered_events = sort_json_events_by_pubdate(
       non_filtered_events,
       )
-    filtered_events = sort_json_events_by_start(
+      
+    filtered_events = sort_json_events_by_pubdate(
       filtered_events,
       )
 
