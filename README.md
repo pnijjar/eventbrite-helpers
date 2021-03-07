@@ -1,14 +1,27 @@
 Generate RSS2 Feeds from Eventbrite API
 =======================================
 
-Using the Eventbrite API, generate RSS feeds (and maybe other things,
+Using the Eventbrite API, generate RSS/iCal feeds (and maybe other things,
 someday).
+
+Since the Eventbrite Search API was shut down in December 2019, the
+script fetches event IDs from Eventbrite's HTML events listings. 
+It then uses the API to grab event details. As of this writing, it
+costs two API calls to retrieve information for one event, so the
+script attempts to minimize the number of API calls per run.
+
+The script can handle "Things to do" pages (eg
+`https://www.eventbrite.ca/d/canada--waterloo--10327/all-events/`) and
+organizer-specific page (eg
+`https://www.eventbrite.com/o/faithtech-11613235556`). Maybe it can
+handle other pages as well. 
 
 This project is similar to
 [google-calendar-helpers](https://github.com/pnijjar/google-calendar-helpers)
 except there is no testing. 
 
-At some point these projects should be merged.
+At some point these projects should be merged or a library of common
+functions should be factored out. 
 
 Deployment
 ----------
@@ -24,6 +37,8 @@ Deployment
 - Copy `config.py.example` to `config-demo.py` and customize it to your
   needs.
 - Run `gen_rss_eventbrite.py --config config-demo.py`
+  or `gen_ical_eventbrite.py --config config-demo.py` 
+  or `gen_rss_ical_eventbrite.py --config config-demo.py` 
 
 
 Caveats

@@ -9,3 +9,9 @@
 - Eventbrite has severely limited the search API, as of October 2019.
   So the RSS feeds have gotten a lot shorter. Ideally we would 
   retrieve events without destroying the old feed.
+
+- We are now getting lists of events from the Eventbrite HTML pages,
+  which is fragile. 
+
+- The boundary for defining "local" events is a rectangle, not a
+  polygon. This is a bad fit for most geographic areas. 
