@@ -7,6 +7,7 @@ import jinja2
 import pytz, datetime, dateutil.parser
 import re
 import logging
+from bs4 import BeautifulSoup
 
 RSS_TEMPLATE="rss_template_eventbrite.jinja2"
 ICAL_TEMPLATE="ical_template_eventbrite.jinja2"
@@ -23,6 +24,13 @@ LIMIT_FETCH = False
 # 429: past rate limit (ugh)
 EVENTBRITE_LIMIT_STATUSES = [406, 429,]
 
+
+_num_api_calls = 0
+
+# ---- EXCEPTIONS -----
+class NoEventbriteIDException(Exception):
+    pass
+
 # ------------------------------
 def print_from_template (s): 
     """ Show the value of a string that is being processed in a 
@@ -35,10 +43,77 @@ def print_from_template (s):
 def clean_eventbrite_url (url):
    """ Remove unneeded query info from Eventbrite URL
    """
-   base, params = url.split("?", 1)
+
+   if url.find('?') >= 0:
+       try:
+           base, params = url.split("?", 1) 
+       except ValueError as e:
+           logging.error(
+             "Could not split." 
+             "Offending url is {}".format(url))
+           return url
+
+       return base
+
+   return url
 
 
-   return base
+# -----------------------------
+def url_to_id(url):
+    """ Convert URL to ID, using regular expressions. Now I have two
+    problems. The assumption is that the final number of an URL is the 
+    ID. eg 
+    https://www.eventbrite.ca/e/sunday-afternoon-service-tickets-142594456859
+    produces
+    142594456859
+    """
+
+    id_regex = re.compile(r'.+-(\d+)')
+    try:
+        id = re.match(id_regex, url).group(1)
+    except AttributeError:
+        logging.error("No ID in URL {}".format(url))
+        raise NoEventbriteIDException("No ID in URL {}".format(url))
+
+    return id
+
+
+# -----------------------------
+def event_in_boundary(event):
+    """ Determine whether an event is in the range. Depends on 
+        global constant.
+        Does not handle weird GMT boundaries.
+        Says that virtual events are false.
+
+        Consumes an event (with no ID)
+
+        Produces a boolean
+    """
+
+    id = url_to_id(event['url'])
+
+    if not 'location' in event:
+        logging.debug("{}: no location field!".format(id))
+        return False
+
+    elif not 'geo' in event['location']:
+        logging.debug("{}: no lat/long location!".format(id))
+        return False
+
+    else:
+        geo = event['location']['geo']
+        
+        if float(geo['latitude']) >= config.GEO_BOUNDARY['lat_min'] \
+          and float(geo['latitude']) <= config.GEO_BOUNDARY['lat_max'] \
+          and float(geo['longitude']) >= config.GEO_BOUNDARY['long_min'] \
+          and float(geo['longitude']) <= config.GEO_BOUNDARY['long_max']:
+
+            return True
+        else:
+            logging.debug("{}: Not in boundary!".format(id))
+            #print(event['name'])
+            #pprint.pprint(event['location'])
+            return False
 
 
 # ------------------------------
@@ -248,7 +323,8 @@ def get_ical_block(text, prefix=""):
 """ This calls the Eventbrite search API. May return an error 
     that we ought to handle, but don't.
 """
-def call_api():
+def call_events_api():
+    global _num_api_calls
 
     BASE_URL = "https://www.eventbriteapi.com/v3"
 
@@ -272,7 +348,6 @@ def call_api():
 
     event_list = []
 
-    num_api_calls = 0
 
     while more_items: 
         api_params = { 
@@ -292,11 +367,11 @@ def call_api():
                   "API calls".format(
                     r.status_code,
                     len(event_list),
-                    num_api_calls))
+                    _num_api_calls))
             break
 
         r.raise_for_status()
-        num_api_calls = num_api_calls + 1
+        _num_api_calls = _num_api_calls + 1
         r_json = r.json() 
 
         event_list = event_list + r_json['events']
@@ -385,17 +460,81 @@ def call_api():
 
     return event_list
 
+# -----------------------------
+def call_api(api_url, api_params):
+    """ Call the Eventbrite API and produce the JSON, or an exception.
+    """
+    global _num_api_calls
+
+    r = requests.get(api_url, api_params)
+
+    _num_api_calls = _num_api_calls + 1
+
+    if r.status_code in EVENTBRITE_LIMIT_STATUSES:
+        logging.warn("Received status code {} "
+          "after {} API calls this run".format(
+          r.status_code,
+          _num_api_calls
+          ))
+
+    r.raise_for_status()
+
+
+    return r.json() 
+
+
+
+# ------------------------------
+def get_event_from_api(id):
+    """ This calls the Eventbrite event API. May return an error 
+        that we ought to handle, but don't.
+
+        id: The ID of the event to get
+    """
+
+    BASE_URL = "https://www.eventbriteapi.com/v3"
+
+    event_api_url = "{}/events/{}".format(
+      BASE_URL,
+      id,
+      )
+
+    desc_api_url = "{}/events/{}/description".format(
+      BASE_URL,
+      id,
+      )
+
+    event_api_params = { 
+      'token': config.API_TOKEN,
+      'expand' : \
+        'venue,organizer,ticket_availability',
+      }
+
+    desc_api_params = { 
+      'token': config.API_TOKEN,
+       }
+
+
+    event = call_api(event_api_url, event_api_params)
+
+    # TODO: Get rid of this option?
+    if config.GET_FULL_DESCRIPTIONS:
+        desc = call_api(desc_api_url, desc_api_params)
+        event['full_description'] = desc['description']
+
+    return event
+
 
 # -----------------------------
-""" Print JSON nicely, because debugging is frustrating.
-"""
 def print_json(j):
+    """ Print JSON nicely, because debugging is frustrating.
+    """
     print(json.dumps(j, indent=2, separators=(',', ': ')))
 
 
 
 # ------------------------------
-def generate_ical(cal_dict):
+def generate_ical(cal_dict, feed_title):
     """ Generate an iCal feed given a JSON file.
     """
 
@@ -424,7 +563,7 @@ def generate_ical(cal_dict):
 
     template = template_env.get_template( ICAL_TEMPLATE ) 
     template_vars = { 
-      "feed_title": config.FEED_TITLE,
+      "feed_title": feed_title,
       "feed_description": config.FEED_DESCRIPTION,
       "feed_webmaster" : config.WEBMASTER,
       "feed_webmaster_name" : config.WEBMASTER_NAME,
@@ -444,7 +583,7 @@ def generate_ical(cal_dict):
 
 
 # ------------------------------
-def generate_rss(cal_dict):
+def generate_rss(cal_dict, feed_title):
     """ Given a JSON formatted calendar dictionary, make and return 
         the RSS file.
     """
@@ -473,7 +612,7 @@ def generate_rss(cal_dict):
 
     template = template_env.get_template( RSS_TEMPLATE ) 
     template_vars = { 
-      "feed_title": config.FEED_TITLE,
+      "feed_title": feed_title,
       "feed_description": config.FEED_DESCRIPTION,
       "feed_webmaster" : config.WEBMASTER,
       "feed_webmaster_name" : config.WEBMASTER_NAME,
@@ -620,8 +759,6 @@ def load_config(configfile=None):
 
     # For test harness
     return config
-
-
 # ------------------------------
 def sort_json_events(events):
     """ Given a list of Eventbrite events, sort them in 
@@ -636,6 +773,19 @@ def sort_json_events(events):
     return sorted_events
        
 
+# -----------------------------
+def sort_json_events_by_start(events):
+    """ Given a list of Eventbrite events, sort them in 
+        descending order by start time and produce the result.
+    """
+
+    sorted_events = sorted(
+      events,
+      key=lambda item: item['start']['utc'],
+      reverse=True,
+      )
+
+    return sorted_events
             
 # ------------------------------
 def merge_and_prune(old_items, update_items):
@@ -724,6 +874,217 @@ def merge_and_prune(old_items, update_items):
     return merged_items
 
 
+
+# ------
+def extract_events(page):
+    """ Parse json events from requested page
+    
+    page: a BeautifulSoup object
+    """
+    event_script = page.find_all(type="application/ld+json")
+
+    num_candidates = len(event_script)
+    if num_candidates != 1:
+        logging.warn( "Uh oh. Looked for JSON and"
+          " found {} possible elements.".format(num_candidates))
+
+    api_data = json.loads(event_script[0].string)
+
+    return api_data
+
+    
+# -------
+def traverse_pages(target, json_so_far, pages_available, page_limit):
+    """ Pull JSON from pages, to desired limit
+
+    target : URL to fetch
+    json_so_far : collected events up to this point
+    pages_available: how many pages can be consumed (reported by
+      Eventbrite)
+    page_limit: maximum pages to consume (determined by us)
+    """
+
+    curr_page = 2
+    while (curr_page <= page_limit) \
+      and (curr_page <= pages_available):
+        
+
+        payload = {'page': curr_page}
+        r = requests.get(target, params=payload)
+
+        try:
+            r.raise_for_status()
+            logging.debug("Fetched page {}: {}".format(curr_page, r.url))
+        except requests.exceptions.HTTPError as e:
+            logging.warn("Oy. Received status {}.  Bailing".format(
+              r.status
+              )) 
+            return json_so_far
+
+        page = BeautifulSoup(r.text, 'html.parser')
+
+        new_json = extract_events(page)
+        json_so_far = json_so_far + new_json
+
+        curr_page = curr_page + 1
+
+    return json_so_far
+
+# ----------------------------
+def download_events():
+    """ Download events. Produces a list of JSON elements.
+    """
+
+    all_events = json.loads('[]')
+
+    for target in config.EVENTBRITE_TARGET_URLS:
+        r = requests.get(target)
+        r.raise_for_status()
+
+        # Get the JSON I want
+        page = BeautifulSoup(r.text, 'html.parser')
+
+        #with open(OUT_HTML, 'w') as f:
+        #    f.write(r.text)
+
+        # TODO: Put this in a try/catch block or something, in case
+        # there is no such thing.
+        total_pages = 1
+        try:
+            total_pages_div = page.find( 
+              'div', 
+              {'data-spec': 'paginator__last-page-link'}
+              )
+            total_pages = int(total_pages_div.a.contents[0])
+            logging.debug(
+              "I think there are {} pages in total".format(total_pages))
+        except Exception as e:
+            logging.error("No paginator found on {}".format( target))
+            total_pages = 1
+            
+        events = extract_events(page)
+        events = traverse_pages(
+          target, 
+          events, 
+          total_pages,
+          config.MAX_EVENTBRITE_PAGES_TO_FETCH
+          )
+        logging.debug("Got {} items!".format(len(events)))
+
+        all_events = all_events + events
+
+    return all_events
+
+# -----------------------------
+def incorporate_events(event_dict, new_events):
+    """ Incorporate new events into event_dict, if they are worthy.
+
+        event_dict: indexed by event ID
+        new_events: raw downloaded events
+    """
+
+    for event in new_events:
+        id = url_to_id(event['url'])
+        too_far = False
+
+        if not event_in_boundary(event):
+            logging.debug(
+              "Rejected event" 
+              "{}: not in boundary".format(id)
+              )
+            too_far = True
+
+        if id in event_dict:
+            # TODO: Compare against (short) description. 
+            # If they are different then need to update. 
+            #logging.debug("Event {} already in event_dict".format(id))
+            continue
+
+
+        # TODO: Check if event is in past
+        
+        now = get_time_now().strftime("%FT%T")
+
+        if not too_far:
+            api_event = get_event_from_api(id)
+
+            # TODO: Check against blacklist and mark as filtered
+            filtered = False
+            if api_event["organizer_id"] in config.FILTERED_ORGANIZERS:
+                filtered = True
+        else:
+            # Make a dummy event cheaply
+            api_event = {}
+            api_event['end'] = {
+              'utc': event['endDate'],
+              }
+
+        api_event['extrainfo'] = { 
+          'too_far' : too_far,
+          'filtered_out' : filtered,
+          'added' : now,
+          }
+
+        api_event['pulled_event'] = event
+
+        event_dict[id] = api_event
+
+# -------------------------
+def prepare_event_lists(event_dict):
+    """ Split event_dict into filtered and unfiltered lists of events.
+
+        Returns a tuple:
+          - non-filtered events (json)
+          - filtered events (json)
+          - list of IDs to delete from event_dict
+            because they are in the past
+
+        Filtered and non-filtered events are sorted (how?)
+    """
+
+    ids_to_delete = []
+    non_filtered_events = []
+    filtered_events = []
+
+    too_old = get_time_now()
+
+
+    for id, event in event_dict.items():
+        if dateutil.parser.parse(event['end']['utc']) < too_old:
+            ids_to_delete.append(id)
+            logging.debug("Dropped event {} with end time {}".format(
+              id,
+              event['end']['utc']
+              ))
+        elif 'too_far' in event['extrainfo'] and \
+          event['extrainfo']['too_far']:
+            continue
+        elif event['extrainfo']['filtered_out']:
+            filtered_events.append(event)
+        else:
+            non_filtered_events.append(event)
+
+        
+    non_filtered_events = sort_json_events_by_start(
+      non_filtered_events,
+      )
+    filtered_events = sort_json_events_by_start(
+      filtered_events,
+      )
+
+    return non_filtered_events, filtered_events, ids_to_delete
+        
+
+
+# ------------------------------
+def clean_event_dict(event_dict, ids_to_delete):
+    """ Removes every event with an id ids_to_delete from event_dict.
+    """
+
+    for id in ids_to_delete:
+      del event_dict[id]
+
+
 # ------------------------------
 def write_transformation(transforms):
     """ Write file(s) for the transformation. The transforms should
@@ -733,39 +1094,64 @@ def write_transformation(transforms):
 
     load_config() 
 
-    # Try to load EXISTING json file. 
-    # Man is this sketchy. I am not testing for malicious input!
-    old_json = []
+    # There is a type error now.
+    # old_json should be the dictionary of events.
+    # It has keys that are IDs.
 
-    if os.path.isfile(config.OUTJSON):
-        with open(config.OUTJSON, "r", encoding='utf8') as injson:
-            content = json.load(injson)
-            old_json = sort_json_events(content)
+    # new_json is the event list. It is just a JSON list.
+    # We need to compare it to elements of the event_dict. 
 
-    new_json_unsorted = call_api() 
-    #new_json_unsorted = []
-    new_json = sort_json_events(new_json_unsorted)
+    # This is still sketchy, because we are still not testing for 
+    # malicious input!
+
+    event_dict = {} 
+    if os.path.isfile(config.OUT_EVENT_DICT):
+        with open(config.OUT_EVENT_DICT, "r", encoding='utf8') as injson:
+            event_dict = json.load(injson)
 
 
-    # Hold your horses. Now we need to process the JSON file and get
-    # rid of old stuff. 
-    cal_json = merge_and_prune(old_json, new_json)
+    #raw_events = download_events()
+    #incorporate_events(event_dict, raw_events)
 
-    outjson = open(config.OUTJSON, "w", encoding='utf8')
-    json.dump(cal_json, outjson, indent=2, separators=(',', ': '))
+    nice_json, filtered_json, old_ids = prepare_event_lists(event_dict)
+
+    clean_event_dict(event_dict, old_ids)
+
+    out_events = open(config.OUT_EVENT_DICT, "w", encoding='utf8')
+    json.dump(event_dict, out_events, indent=2, separators=(',', ': '))
 
     destpairs = []
 
     for transform_type in transforms:
         if transform_type == "rss":
             destpairs.append({
-              'generated_file': generate_rss(cal_json),
+              'generated_file': generate_rss(
+                nice_json,
+                config.FEED_TITLE
+                ),
               'dest': config.OUTRSS
+              })
+            destpairs.append({
+              'generated_file': generate_rss(
+                filtered_json,
+                "{} - Filtered Out Events".format(config.FEED_TITLE)
+                ),
+              'dest': config.OUTRSS_FILTERED
               })
 
         elif transform_type == "ical":
             destpairs.append({
-              'generated_file': generate_ical(cal_json),
+              'generated_file': generate_ical(
+                nice_json,
+                config.FEED_TITLE,
+                ),
+              'dest': config.OUTICAL
+              })
+            destpairs.append({
+              'generated_file': generate_ical(
+                filtered_json,
+                "{} - Filtered Out Events".format(config.FEED_TITLE)
+                ),
               'dest': config.OUTICAL
               })
 
@@ -782,4 +1168,8 @@ def write_transformation(transforms):
           encoding='utf8',
           )
         outfile.write(outpair['generated_file'])
+
+    logging.info("Made {} API calls".format(_num_api_calls))
+
+
 

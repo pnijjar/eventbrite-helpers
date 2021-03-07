@@ -66,12 +66,21 @@
                 {%- endif %}
                 
                 &lt;p&gt;
+                &lt;strong&gt;Organizer: &lt;/strong&gt;{{ item['organizer']['name'] }} (ID: {{ item['organizer']['id'] }})
+                &lt;/p&gt;
+
+                &lt;p&gt;
                 &lt;/p&gt;
                 {% if feed_full_descriptions -%}
                     {{ item['full_description'] | cleanxml }}
                 {%- else -%}
                     {{ item['description']['html'] | cleanxml }}
                 {%- endif -%}
+
+                &lt;p&gt;
+                Organizer: {{ item['organizer']['name'] }} (ID: {{ item['organizer']['id'] }})
+                &lt;/p&gt;
+
                  
             </description>
             <guid isPermaLink="false">{{ item['id'] }}</guid>
