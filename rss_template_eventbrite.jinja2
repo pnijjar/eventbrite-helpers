@@ -43,7 +43,9 @@
                 
                 &lt;p&gt;
                 &lt;strong&gt;Location: &lt;/strong&gt;
-                {%- if item['venue']['address']['localized_address_display'] is defined %}
+                {%- if item['extrainfo']['virtual'] == true -%}
+                    online 
+                {%- elif item['venue']['address']['localized_address_display'] is defined %}
                     {{ item['venue']['name'] | cleanxml }}{{', '}}
                     {{ item['venue']['address']['localized_address_display'] | cleanxml }}
                 {%- else -%}

@@ -78,6 +78,13 @@ def url_to_id(url):
 
     return id
 
+# -----------------------------
+def event_is_virtual(event):
+    """ Determine if event is virtual. Produces a boolean."""
+
+    return 'location' in event and \
+      '@type' in event['location'] and \
+      event['location']['@type'] == "VirtualLocation"
 
 # -----------------------------
 def event_in_boundary(event):
@@ -87,6 +94,7 @@ def event_in_boundary(event):
         Says that virtual events are false.
 
         Consumes an event (with no ID)
+        Prereq: event is not virtual. 
 
         Produces a boolean
     """
@@ -1023,6 +1031,7 @@ def incorporate_events(event_dict, new_events):
         id = url_to_id(event['url'])
         too_far = False
         filtered = False
+        virtual = False
 
         # Make an aware date 
         end_date_raw = dateutil.parser.parse(event['endDate'])
@@ -1041,12 +1050,9 @@ def incorporate_events(event_dict, new_events):
               recent))
             continue
 
-
-        if not event_in_boundary(event):
-            logging.debug(
-              "Rejected event" 
-              " {}: not in boundary".format(id)
-              )
+        if event_is_virtual(event):
+            virtual = True 
+        elif not event_in_boundary(event):
             too_far = True
 
 
@@ -1081,6 +1087,7 @@ def incorporate_events(event_dict, new_events):
         api_event['extrainfo'] = { 
           'too_far' : too_far,
           'filtered_out' : filtered,
+          'virtual' : virtual,
           'added' : now.strftime("%FT%T"),
           }
 
@@ -1095,6 +1102,7 @@ def prepare_event_lists(event_dict):
         Returns a tuple:
           - non-filtered events (json)
           - filtered events (json)
+          - virtual events (json)
           - list of IDs to delete from event_dict
             because they are in the past
 
@@ -1104,6 +1112,7 @@ def prepare_event_lists(event_dict):
     ids_to_delete = []
     non_filtered_events = []
     filtered_events = []
+    virtual_events = []
 
     too_old = get_time_now() - datetime.timedelta(days=1)
     timezone = pytz.timezone(config.TIMEZONE)
@@ -1112,23 +1121,15 @@ def prepare_event_lists(event_dict):
     for id, event in event_dict.items():
         end_date = dateutil.parser.parse(event['end']['utc'])
 
-        """
-        # Naive
-        if end_date_raw.tzinfo is None or \
-          end_date_raw.tzinfo.utcoffset(end_date_raw) is None:
-            
-            end_date = timezone.localize(end_date_raw)
-        else:
-            end_date = end_date_raw
-        """
-
-
         if end_date < too_old:
             ids_to_delete.append(id)
             logging.debug("Dropped event {} with end time {}".format(
               id,
               event['end']['utc']
               ))
+        elif 'virtual' in event['extrainfo'] and \
+          event['extrainfo']['virtual']:
+            virtual_events.append(event)
         elif event['extrainfo']['too_far']:
             continue
         elif event['extrainfo']['filtered_out']:
@@ -1145,7 +1146,8 @@ def prepare_event_lists(event_dict):
       filtered_events,
       )
 
-    return non_filtered_events, filtered_events, ids_to_delete
+    return non_filtered_events, filtered_events, \
+      virtual_events, ids_to_delete
         
 
 
@@ -1190,14 +1192,15 @@ def write_transformation(transforms):
 
     # Save early and late, in case there are bugs in between.
     # TODO: Get rid of this
-    out_events = open(config.OUT_EVENT_DICT, "w", encoding='utf8')
-    json.dump(event_dict, out_events, indent=2, separators=(',', ': '))
+    with open(config.OUT_EVENT_DICT, "w", encoding='utf8') as out_events:
+        json.dump(event_dict, out_events, indent=2, separators=(',', ': '))
 
-    nice_json, filtered_json, old_ids = prepare_event_lists(event_dict)
+    nice_json, filtered_json, virtual_json, old_ids \
+      = prepare_event_lists(event_dict)
     clean_event_dict(event_dict, old_ids)
 
-    out_events = open(config.OUT_EVENT_DICT, "w", encoding='utf8')
-    json.dump(event_dict, out_events, indent=2, separators=(',', ': '))
+    with open(config.OUT_EVENT_DICT, "w", encoding='utf8') as out_events:
+        json.dump(event_dict, out_events, indent=2, separators=(',', ': '))
 
     destpairs = []
 
@@ -1217,6 +1220,13 @@ def write_transformation(transforms):
                 ),
               'dest': config.OUTRSS_FILTERED
               })
+            destpairs.append({
+              'generated_file': generate_rss(
+                virtual_json,
+                "{} - Virtual Events".format(config.FEED_TITLE)
+                ),
+              'dest': config.OUTRSS_VIRTUAL
+              })
 
         elif transform_type == "ical":
             destpairs.append({
@@ -1231,7 +1241,14 @@ def write_transformation(transforms):
                 filtered_json,
                 "{} - Filtered Out Events".format(config.FEED_TITLE)
                 ),
-              'dest': config.OUTICAL
+              'dest': config.OUTICAL_FILTERED
+              })
+            destpairs.append({
+              'generated_file': generate_ical(
+                virtual_json,
+                "{} - Virtual Events".format(config.FEED_TITLE)
+                ),
+              'dest': config.OUTICAL_VIRTUAL
               })
 
         else:

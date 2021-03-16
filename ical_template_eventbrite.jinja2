@@ -38,7 +38,9 @@ DESCRIPTION:
     {{- item['description']['html'] | ical_block -}}
 {%- endif %}
 LAST-MODIFIED:{{ item['changed'] | ical_datetime }}
-LOCATION: {%- if item['venue']['address']['localized_address_display'] is defined %}
+LOCATION: {%- if item['extrainfo']['virtual'] == true -%}
+              online.
+          {%- elif item['venue']['address']['localized_address_display'] is defined %}
               {%- set loc = item['venue']['name'] ~ ', ' 
                 ~ item['venue']['address']['localized_address_display'] %}
               {{- loc | ical_block("LOCATION:") -}}
