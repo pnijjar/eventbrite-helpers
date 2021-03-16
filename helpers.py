@@ -67,9 +67,17 @@ def url_to_id(url):
     https://www.eventbrite.ca/e/sunday-afternoon-service-tickets-142594456859
     produces
     142594456859
-    """
 
-    id_regex = re.compile(r'.+-(\d+)')
+    Another possibility is the format 
+    https://eventbrite.ca/e/142594456859
+    """
+     
+    # .+ : https://www.eventbrite.ca
+    # /e/ : /e/ literally
+    # (?:.+-)? : Possibly 'sunday-afternoon-service-tickets-' . 
+    #   '?:' means "group but do not count as a matching group"
+    # (\d+)$ : end should be just digits. Match as group(1)
+    id_regex = re.compile(r'.+/e/(?:.+-)?(\d+)$')
     try:
         id = re.match(id_regex, url).group(1)
     except AttributeError:
@@ -532,7 +540,7 @@ def get_event_from_api(id):
             desc = call_api(desc_api_url, desc_api_params)
             event['full_description'] = desc['description']
     
-    except HTTPError as e:
+    except requests.exceptions.HTTPError as e:
         # Failed. Now what?
         # The description may or may not be present. Ugh.
         logging.error("get_event_from_api: Received API error: {}".format(e))
@@ -777,7 +785,6 @@ def load_config(configfile=None):
       format='%(asctime)s %(levelname)s: %(message)s',
       datefmt='%Y-%m-%d %H:%M {}'.format(args.configfile),
       )
-
 
 
     # For test harness
@@ -1056,8 +1063,6 @@ def incorporate_events(event_dict, new_events):
             too_far = True
 
 
-
-
         if id in event_dict:
             # TODO: Compare against (short) description. 
             # If they are different then need to update. 
@@ -1070,7 +1075,7 @@ def incorporate_events(event_dict, new_events):
             if api_event is None:
                 # Something went bad. Better bail 
                 logging.warn("API call failed. Stopping fetch.")
-                break
+                continue
 
             # TODO: Check against blacklist and mark as filtered
             if api_event["organizer_id"] in config.FILTERED_ORGANIZERS:
