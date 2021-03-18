@@ -6,11 +6,17 @@ import requests
 import jinja2
 import pytz, datetime, dateutil.parser
 import re
-import logging
+import logging, logging.handlers
 from bs4 import BeautifulSoup
 
 RSS_TEMPLATE="rss_template_eventbrite.jinja2"
 ICAL_TEMPLATE="ical_template_eventbrite.jinja2"
+
+# Order is important! More verbose is earlier.
+LOGLEVELS = ['debug', 'info', 'warning', 'error', 'critical', 'silent']
+LOGGING_MAX_LOGFILE_SIZE = 1024 * 1024
+LOGGING_NUM_LOGFILES_TO_KEEP = 5
+
 
 # See:
 # https://stackoverflow.com/questions/730133/invalid-characters-in-xml
@@ -30,6 +36,9 @@ _num_api_calls = 0
 
 # ---- EXCEPTIONS -----
 class NoEventbriteIDException(Exception):
+    pass
+
+class UnknownHandlerException(Exception):
     pass
 
 # ------------------------------
@@ -667,8 +676,113 @@ def print_results(events):
 
 
 
+## ------------------------------
+def loglevel_str_to_const(loglevel_str):
+    """ Consumes an element of LOGLEVELS and produces the 
+        corresponding logging constant.
+
+        Pre: loglevel_str is in LOGLEVELS?
+    """
+
+    loglevel = None
+
+    if loglevel_str == 'debug':
+        loglevel = logging.DEBUG
+    elif loglevel_str == 'error':
+        loglevel = logging.ERROR
+    elif loglevel_str == 'warning':
+        loglevel = logging.WARNING
+    elif loglevel_str == 'critical':
+        loglevel = logging.CRITICAL
+    elif loglevel_str == 'info':
+        loglevel = logging.INFO
+    elif loglevel_str == 'silent':
+        loglevel = 1000
+
+    return loglevel
+
+## -----------------------------
+def config_logging(config, args):
+    """ Set up logging given the config and args.
+    """
+    formatter = logging.Formatter(
+      fmt='%(asctime)s %(levelname)s: %(message)s',
+      datefmt='%Y-%m-%d %H:%M {}'.format(args.configfile),
+      )
+
+    logger = logging.getLogger() # eventbrite_helpers
+    logger.setLevel(logging.DEBUG)
+
+    #root_logger = logging.getLogger()
+    #root_logger.setLevel(logging.DEBUG)
+
+    loglevel_file = 'silent'
+    if args.verbose:
+        loglevel_file = 'debug'
+    elif args.loglevel_file:
+        loglevel_file = args.loglevel_file
+    else:
+        # Better hope this is defined!
+        loglevel_file = config.LOGLEVEL_FILE
+
+    if loglevel_file != 'silent':
+        loghandler = logging.handlers.RotatingFileHandler(
+          filename=config.LOGFILE,
+          maxBytes=LOGGING_MAX_LOGFILE_SIZE,
+          backupCount=LOGGING_NUM_LOGFILES_TO_KEEP,
+          )
+
+        # Could factor out these lines into a new helper
+        loghandler.setLevel(loglevel_str_to_const(loglevel_file))
+        loghandler.setFormatter(formatter)
+        logger.addHandler(loghandler)
 
 
+    loglevel_display = 'silent'
+    if args.verbose:
+        loglevel_display = 'debug'
+    elif args.loglevel_display:
+        loglevel_display = args.loglevel_display
+    else:
+        loglevel_display = config.LOGLEVEL_DISPLAY
+
+    if loglevel_display != 'silent':
+        loghandler_display = logging.StreamHandler()
+        loghandler_display.setLevel(
+          loglevel_str_to_const(loglevel_display)
+          )
+        loghandler_display.setFormatter(formatter)
+        logger.addHandler(loghandler_display)
+
+
+    # Ugh. Stupid requests is doing the wrong thing.
+    #quietest_level = max(
+    #    loglevel_str_to_const(loglevel_display),
+    #    loglevel_str_to_const(loglevel_file)
+    #    )
+
+
+    #root_logger = logging.getLogger("root")
+    #root_logger.setLevel(quietest_level)
+
+    #req_logger = logging.getLogger("requests")
+    #req_logger.setLevel(quietest_level)
+
+    #urllib_logger = logging.getLogger("urllib3")
+    #urllib_logger.setLevel(quietest_level)
+
+
+    #for key in logging.Logger.manager.loggerDict:
+        #logging.getLogger(key).setLevel(quietest_level)
+        # print(key)
+        #pass
+
+    logging.debug("Display loglevel: {} ({}), File loglevel: {} ({})".format(
+      loglevel_display,
+      loglevel_str_to_const(loglevel_display),
+      loglevel_file,
+      loglevel_str_to_const(loglevel_file),
+      ))
 
 
 ## ------------------------------
@@ -717,6 +831,15 @@ def load_config(configfile=None):
         help='print debug info to log and stdout',
         action='store_true',
         )
+    parser.add_argument('-lf', '--loglevel-file',
+        help='Log level messages to print to the file.',
+        choices=LOGLEVELS,
+        )
+    parser.add_argument('-ld', '--loglevel-display',
+        help='Log level messages to print to the display.',
+        choices=LOGLEVELS,
+        )
+
 
     args = parser.parse_args()
     if args.configfile:
@@ -758,34 +881,8 @@ def load_config(configfile=None):
         import imp
         config = imp.load_source( 'config', config_location,)
 
-    loglevel = logging.INFO
 
-    # Notice how invalid input will stay at INFO. 
-    if config.LOGLEVEL == 'debug':
-        loglevel = logging.DEBUG
-    elif config.LOGLEVEL == 'error':
-        loglevel = logging.ERROR
-    elif config.LOGLEVEL == 'warning':
-        loglevel = logging.WARNING
-    elif config.LOGLEVEL == 'critical':
-        loglevel = logging.CRITICAL
-
-    log_handlers = [logging.FileHandler(config.LOGFILE)]
-
-    if args.verbose:
-        loglevel = logging.DEBUG
-        log_handlers.append(logging.StreamHandler())
-
-
-    # Set up logging
-    # (This is the wrong place to do this, but oh well)
-    logging.basicConfig(
-      handlers=log_handlers,
-      level=loglevel,
-      format='%(asctime)s %(levelname)s: %(message)s',
-      datefmt='%Y-%m-%d %H:%M {}'.format(args.configfile),
-      )
-
+    config_logging(config, args)
 
     # For test harness
     return config
@@ -915,7 +1012,7 @@ def extract_events(page):
 
     num_candidates = len(event_script)
     if num_candidates != 1:
-        logging.warn( "Uh oh. Looked for JSON and"
+        logging.debug( "Uh oh. Looked for JSON and"
           " found {} possible elements.".format(num_candidates))
 
     best_candidate = None
@@ -961,9 +1058,11 @@ def traverse_pages(target, json_so_far, pages_available, page_limit):
             r.raise_for_status()
             logging.debug("Fetched page {}: {}".format(curr_page, r.url))
         except requests.exceptions.HTTPError as e:
-            logging.warn("Oy. Received status {}.  Bailing".format(
-              r.status
-              )) 
+            logging.warn("Oy. Received status {} for"
+              "url {}.  Bailing".format(
+                r.status,
+                r.url,
+                )) 
             return json_so_far
 
         page = BeautifulSoup(r.text, 'html.parser')
@@ -1001,10 +1100,13 @@ def download_events():
               {'data-spec': 'paginator__last-page-link'}
               )
             total_pages = int(total_pages_div.a.contents[0])
-            logging.debug(
-              "I think there are {} pages in total".format(total_pages))
+            logging.info(
+              "{}: I think there are {} pages in total".format(
+                target,
+                total_pages,
+                ))
         except Exception as e:
-            logging.error("No paginator found on {}".format( target))
+            logging.debug("No paginator found on {}".format( target))
             total_pages = 1
             
         events = extract_events(page)
@@ -1016,7 +1118,10 @@ def download_events():
               total_pages,
               config.MAX_EVENTBRITE_PAGES_TO_FETCH
               )
-        logging.debug("Got {} items!".format(len(events)))
+        logging.info("{}: Got {} items!".format(
+          target,
+          len(events))
+          )
 
         all_events = all_events + events
 
@@ -1174,6 +1279,8 @@ def write_transformation(transforms):
 
     load_config() 
 
+    logging.info("Starting run")
+
     # There is a type error now.
     # old_json should be the dictionary of events.
     # It has keys that are IDs.
@@ -1270,6 +1377,6 @@ def write_transformation(transforms):
           )
         outfile.write(outpair['generated_file'])
 
-
+    logging.info("Completed run")
 
 

@@ -58,9 +58,11 @@ OUT_EVENT_DICT=os.path.join(
 # Where to log events
 LOGFILE=os.path.join(SRCDIR, "logs", "eventbrite.log")
 
-# What level to use. Default is 'info'. Other 
-# permitted values: 'warning', 'error', 'critical', 'debug'
-LOGLEVEL='info'
+# How verbose should logging be to the file and to the
+# screen (display)?
+# Call the function with --help to see the allowed values.
+LOGLEVEL_FILE='info'
+LOGLEVEL_SCREEN='error'
 
 # Who is responsible for this feed
 WEBMASTER="admin@example.com"
