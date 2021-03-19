@@ -1267,7 +1267,7 @@ def clean_event_dict(event_dict, ids_to_delete):
     """
 
     for id in ids_to_delete:
-      del event_dict[id]
+        del event_dict[id]
 
 
 # ------------------------------
