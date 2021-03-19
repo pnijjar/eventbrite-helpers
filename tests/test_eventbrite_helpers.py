@@ -298,6 +298,14 @@ def get_testfiles(infolder, extension):
 
 @pytest.mark.parametrize(
     "googledate, target",
+    pickdate(1, DATE_EXAMPLES),
+    )
+def test_rfc822(googledate, target):
+    assert h.get_rfc822_datestring(googledate) \
+        == target
+
+@pytest.mark.parametrize(
+    "googledate, target",
     pickdate(2, DATE_EXAMPLES),
     )
 def test_human_date(googledate, target):
@@ -314,20 +322,11 @@ def test_human_dateonly(googledate, target):
 
 @pytest.mark.parametrize(
     "googledate, target",
-    pickdate(1, DATE_EXAMPLES),
-    )
-def test_rfc822(googledate, target):
-    assert h.get_rfc822_datestring(googledate) \
-        == target
-
-@pytest.mark.parametrize(
-    "googledate, target",
     pickdate(4, DATE_EXAMPLES),
     )
 def test_short_human_dateonly(googledate, target):
     assert h.get_short_human_dateonly(googledate) \
         == target
-
 
 @pytest.mark.parametrize(
     "googledate, target",
@@ -338,11 +337,48 @@ def test_short_human_datetime(googledate, target):
         == target
 
 
+# Can't I use a loop?
+
 
 @pytest.mark.xfail(reason="parsedate chokes on 0000")
 def test_year_zero():
     assert h.get_human_date("0000-12-29T00:00.000Z") \
         == "Friday, December 29 0000"
+
+
+
+# ----- TEST URL FUNCTIONS
+
+def test_clean_ev_url_noparam():
+    assert h.clean_eventbrite_url(
+      "https://eventbrite.ca/e/142594456859") \
+      == "https://eventbrite.ca/e/142594456859"
+
+def test_clean_ev_url_param():
+    assert h.clean_eventbrite_url(
+      "https://eventbrite.ca/e/142594456859?aff=twitter") \
+      == "https://eventbrite.ca/e/142594456859"
+
+def test_clean_ev_url_long():
+    assert h.clean_eventbrite_url(
+      "https://www.eventbrite.ca/e/toolmaking-tickets-133077754145?aff=twitter") \
+      == "https://www.eventbrite.ca/e/toolmaking-tickets-133077754145"
+    
+
+# ------ url_to_id(url)
+
+def test_url_to_id_short():
+    assert h.url_to_id("https://eventbrite.ca/e/142594456859") \
+      == "142594456859"
+
+def test_url_to_id_long():
+    assert h.url_to_id(
+      "https://www.eventbrite.ca/e/sunday-afternoon-service-tickets-14259445") \
+      == "14259445"
+
+def test_url_to_id_noid():
+    with pytest.raises(h.NoEventbriteIDException):
+      h.url_to_id("https://www.eventbrite.ca/e/sunday-afternoon-service-ti")
 
 
 """
