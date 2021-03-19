@@ -5,3 +5,4 @@ bg-research/
 __pycache__/
 output/
 logs/
+*.egg-info

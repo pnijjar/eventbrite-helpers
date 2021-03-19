@@ -1,5 +1,5 @@
 #!/usr/bin/env python3 
 
-import helpers as h
+from eventbrite_helpers import helpers as h
 
 h.write_transformation(['rss','ical',])

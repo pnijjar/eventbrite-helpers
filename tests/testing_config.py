@@ -70,7 +70,7 @@ WEBMASTER_NAME="Webmaster"
 
 # What is the filesystem path to the templates?
 # (Same folder as config.py?)
-TEMPLATE_DIR="{}/eventbrite_helpers".format(SRCDIR)
+TEMPLATE_DIR=SRCDIR
 
 # For datetime nonsense
 TIMEZONE="America/Toronto"
