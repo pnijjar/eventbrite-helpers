@@ -48,46 +48,6 @@ FAKE_NOW = datetime.datetime(
     tzinfo=dateutil.tz.tzoffset(None, -14400)
     )
 
-# Format: googledate, rfc822, human, human-dateonly, 
-#   short-human-dateonly, short-human-datetime 
-#   explanation
-# This is because I am testing many different 
-# functions with the same input.
-DATE_EXAMPLES = [
-    ("2016-04-07T20:10.000Z", 
-        "Thu, 07 Apr 2016 20:10:00 +0000",
-        "Thursday, Apr 07 2016,  8:10pm",
-        "Thursday, Apr 07 2016",
-        "Thu, Apr  7",
-        "Thu, Apr  7,  8:10pm",
-        "Regular date with UTC",
-        ),
-    ("2017-04-07T20:10.000EDT", 
-        "Fri, 07 Apr 2017 20:10:00 -0400",
-        "Friday, Apr 07 2017,  8:10pm",
-        "Friday, Apr 07 2017",
-        "Fri, Apr  7",
-        "Fri, Apr  7,  8:10pm",
-        "Regular date with EDT",
-        ),
-    ("1970-01-01T00:00.000Z", 
-        "Thu, 01 Jan 1970 00:00:00 +0000",
-        "Thursday, Jan 01 1970, 12:00am",
-        "Thursday, Jan 01 1970",
-        "Thu, Jan  1",
-        "Thu, Jan  1, 12:00am",
-        "Start of epoch",
-        ),
-    ("2016-04-07T23:59.000Z", 
-        "Thu, 07 Apr 2016 23:59:00 +0000",
-        "Thursday, Apr 07 2016, 11:59pm",
-        "Thursday, Apr 07 2016",
-        "Thu, Apr  7",
-        "Thu, Apr  7, 11:59pm",
-        "Final minute",
-        ),
-    ]
-
 
 
 # ==== Helper Functions 
@@ -296,48 +256,100 @@ def get_testfiles(infolder, extension):
 
 # ==== TEST DATES 
 
-@pytest.mark.parametrize(
-    "googledate, target",
-    pickdate(1, DATE_EXAMPLES),
-    )
-def test_rfc822(googledate, target):
-    assert h.get_rfc822_datestring(googledate) \
-        == target
+DATE_TESTS = {
+  "functions": [ 
+    h.get_rfc822_datestring,
+    h.get_human_datestring,
+    h.get_human_dateonly,
+    h.get_short_human_dateonly,
+    h.get_short_human_datetime,
+    h.get_ical_datetime,
+    h.get_ical_datetime_utc,
+    h.get_iso8601_datetime,
+    h.get_human_timeonly,
+    ],
+  "tests": [
+    { "desc": "Regular date with UTC",
+      "arg": "2016-04-07T20:10.000Z",
+      "answers": [
+        "Thu, 07 Apr 2016 20:10:00 +0000",
+        "Thursday, Apr 07 2016,  8:10pm",
+        "Thursday, Apr 07 2016",
+        "Thu, Apr  7",
+        "Thu, Apr  7,  8:10pm",
+        "20160407T201000",
+        "20160407T201000Z",
+        "2016-04-07 20:10",
+        "8:10pm",
+      ],},
+    { "desc": "Regular date with EDT",
+      "arg": "2017-04-07T20:10.000EDT",
+      "answers": [
+        "Fri, 07 Apr 2017 20:10:00 -0400",
+        "Friday, Apr 07 2017,  8:10pm",
+        "Friday, Apr 07 2017",
+        "Fri, Apr  7",
+        "Fri, Apr  7,  8:10pm",
+        "20170407T201000",
+        "20170408T001000Z",
+        "2017-04-07 20:10",
+        "8:10pm",
+      ],},
+    { "desc": "Regular date (morning, no daylight savings)",
+      "arg": "2017-02-07T07:10.000EST",
+      "answers": [
+        "Tue, 07 Feb 2017 07:10:00 -0500",
+        "Tuesday, Feb 07 2017,  7:10am",
+        "Tuesday, Feb 07 2017",
+        "Tue, Feb  7",
+        "Tue, Feb  7,  7:10am",
+        "20170207T071000",
+        "20170207T121000Z",
+        "2017-02-07 07:10",
+        "7:10am",
+      ],},
+    { "desc": "Start of epoch",
+      "arg": "1970-01-01T00:00.000Z",
+      "answers": [
+        "Thu, 01 Jan 1970 00:00:00 +0000",
+        "Thursday, Jan 01 1970, 12:00am",
+        "Thursday, Jan 01 1970",
+        "Thu, Jan  1",
+        "Thu, Jan  1, 12:00am",
+        "19700101T000000",
+        "19700101T000000Z",
+        "1970-01-01 00:00",
+        "12:00am",
+      ],},
+    { "desc": "Final minute",
+      "arg": "2016-04-07T23:59.000Z",
+      "answers": [
+        "Thu, 07 Apr 2016 23:59:00 +0000",
+        "Thursday, Apr 07 2016, 11:59pm",
+        "Thursday, Apr 07 2016",
+        "Thu, Apr  7",
+        "Thu, Apr  7, 11:59pm",
+        "20160407T235900",
+        "20160407T235900Z",
+        "2016-04-07 23:59",
+        "11:59pm",
+      ],},
+    ]}
+
 
 @pytest.mark.parametrize(
-    "googledate, target",
-    pickdate(2, DATE_EXAMPLES),
-    )
-def test_human_date(googledate, target):
-    assert h.get_human_datestring(googledate) \
-        == target
-
+  "fun", range(0, len(DATE_TESTS["functions"]) - 1))
 @pytest.mark.parametrize(
-    "googledate, target",
-    pickdate(3, DATE_EXAMPLES),
+    "testtype", 
+    range(0, len(DATE_TESTS["tests"]) - 1)
     )
-def test_human_dateonly(googledate, target):
-    assert h.get_human_dateonly(googledate) \
-        == target
-
-@pytest.mark.parametrize(
-    "googledate, target",
-    pickdate(4, DATE_EXAMPLES),
-    )
-def test_short_human_dateonly(googledate, target):
-    assert h.get_short_human_dateonly(googledate) \
-        == target
-
-@pytest.mark.parametrize(
-    "googledate, target",
-    pickdate(5, DATE_EXAMPLES),
-    )
-def test_short_human_datetime(googledate, target):
-    assert h.get_short_human_datetime(googledate) \
-        == target
+def test_dates(fun, testtype):
+    assert DATE_TESTS["functions"][fun](
+      DATE_TESTS["tests"][testtype]["arg"]
+      ) == \
+      DATE_TESTS["tests"][testtype]["answers"][fun]
 
 
-# Can't I use a loop?
 
 
 @pytest.mark.xfail(reason="parsedate chokes on 0000")
