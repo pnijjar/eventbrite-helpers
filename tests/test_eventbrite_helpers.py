@@ -358,11 +358,44 @@ def test_year_zero():
         == "Friday, December 29 0000"
 
 
+
+# We could parametrize this, but I will not bother
+def test_datetime_to_utc():
+    d = dateutil.parser.parse("2021-03-23 22:59 EDT")
+    assert h.datetime_to_utc_string(d) == '2021-03-24T02:59:00Z'
+
+
+# Start, end, expected duration
+# I am not going to worry about DST switches, I think.
+DURATION_DICT = [
+  ("2021-03-23 21:00", "2021-03-23 21:01", 1),
+  ("2021-03-23 21:00", "2021-03-23 23:00", 120),
+  ("2021-03-23 21:00", "2021-03-23 21:30", 30),
+  ("2021-03-23 21:00", "2021-03-23 21:00", 0),
+  ("2021-03-23 22:00", "2021-03-23 21:30", -30), # ???
+  ("2021-03-23 21:00", "2021-03-25 21:00", 2880),
+  ("2021-03-23 21:00", "2021-03-24 1:00", 240),
+
+  ]
+
+@pytest.mark.parametrize(
+  "start, end, duration", DURATION_DICT
+  )
+def test_durations(start, end, duration):
+    assert h.get_duration_in_minutes(end, start) == duration
+
+
+# ---- LOGLEVEL TESTS ----------------------
+
+def test_loglevel_dir(
+
+
+
+# ---- ICAL PARSING TESTS ------------------
+
 """
 event_is_virtual
 event_in_boundary
-datetime_to_utc_string
-duration_in_minutes
 get_time_now
 remove_invalid_xml_chars
 ical_escape
@@ -374,7 +407,7 @@ print_json
 generate_ical
 generate_rss
 print_results # remove?
-loglevel_str_to_const
+loglevel_str_to_const # Ignore
 config_logging # HOW??
 load_configuration
 sort_json_events
@@ -387,7 +420,7 @@ incorporate_events
 prepare_event_lists
 clean_event_dict
 write_transformation
-
+print_from_template
 """
 
 
