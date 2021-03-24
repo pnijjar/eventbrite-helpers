@@ -14,6 +14,8 @@ ICAL_TEMPLATE="ical_template_eventbrite.jinja2"
 
 # Order is important! More verbose is earlier.
 LOGLEVELS = ['debug', 'info', 'warning', 'error', 'critical', 'silent']
+
+# Probably these should be configurable. Oh wells.
 LOGGING_MAX_LOGFILE_SIZE = 1024 * 1024
 LOGGING_NUM_LOGFILES_TO_KEEP = 5
 
