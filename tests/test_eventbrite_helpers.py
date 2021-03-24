@@ -358,6 +358,38 @@ def test_year_zero():
         == "Friday, December 29 0000"
 
 
+"""
+event_is_virtual
+event_in_boundary
+datetime_to_utc_string
+duration_in_minutes
+get_time_now
+remove_invalid_xml_chars
+ical_escape
+get_ical_block
+call_events_api # Deprecated -- remove
+call_api
+get_event_from_api
+print_json
+generate_ical
+generate_rss
+print_results # remove?
+loglevel_str_to_const
+config_logging # HOW??
+load_configuration
+sort_json_events
+sort_json_events_by_pubdate # MERGE
+merge_and_prune # Deprecated
+extract_events
+traverse_pages
+download_events
+incorporate_events
+prepare_event_lists
+clean_event_dict
+write_transformation
+
+"""
+
 
 # ----- TEST URL FUNCTIONS
 
