@@ -42,12 +42,9 @@ TESTCONFIG = 'testing_config.py'
 # have the same generation time. 
 # In the RSS, set 
 # <lastBuildDate>Wed, 19 Apr 2017 15:01:56 -0400</lastBuildDate>
-FAKE_NOW = datetime.datetime(
-    2017, 4, 19, 
-    15, 1, 56, 
-    tzinfo=dateutil.tz.tzoffset(None, -14400)
-    )
+FAKE_NOW = dateutil.parser.parse("2017-04-19 15:01:56 EDT")
 
+_fakedate = FAKE_NOW
 
 
 # ==== Helper Functions 
@@ -57,12 +54,11 @@ def set_config():
     """ Set dummy config file.
     """
     global config
-    config = h.load_config(
-        os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            TESTCONFIG,
-            )
-        )
+    configfile=os.path.join(
+      os.path.dirname(os.path.abspath(__file__)),
+      TESTCONFIG,
+      )
+    config = h.load_config(configfile)
 
 
 
@@ -113,17 +109,27 @@ def tally_organized_list(orglist):
     return retval
       
 
+# -------------
+# Get and set fake date for monkeypatch
+def set_fakedate(datestr):
+    global _fakedate
+    _fakedate = dateutil.parser.parse(datestr)
+
+def get_fakedate():
+    return _fakedate
+
+
 # ===== MONKEYPATCHES 
 
 @pytest.fixture
 def patch_datetime_now(monkeypatch):
-    set_config()
     class mydatetime:
         @classmethod
         # Gah. I have to account for timezone input.
         def now(cls, tz=pytz.timezone('America/Toronto')):
-            return FAKE_NOW
+            return get_fakedate()
     monkeypatch.setattr(datetime, 'datetime', mydatetime)
+
 
 
 # --------------
@@ -350,8 +356,6 @@ def test_dates(fun, testtype):
       DATE_TESTS["tests"][testtype]["answers"][fun]
 
 
-
-
 @pytest.mark.xfail(reason="parsedate chokes on 0000")
 def test_year_zero():
     assert h.get_human_date("0000-12-29T00:00.000Z") \
@@ -363,6 +367,19 @@ def test_year_zero():
 def test_datetime_to_utc():
     d = dateutil.parser.parse("2021-03-23 22:59 EDT")
     assert h.datetime_to_utc_string(d) == '2021-03-24T02:59:00Z'
+
+
+@pytest.mark.parametrize(
+  "testtype", range(0, len(DATE_TESTS["tests"]) - 1)
+  )
+def test_date_monkeypatch(testtype, patch_datetime_now,):
+    # This is completely stupid because it repeats the same thing.
+    d = dateutil.parser.parse(DATE_TESTS["tests"][testtype]["arg"])
+
+    set_fakedate(DATE_TESTS["tests"][testtype]["arg"])
+    print("Now is {}".format(datetime.datetime.now()))
+
+    assert datetime.datetime.now() == d
 
 
 # Start, end, expected duration
@@ -387,7 +404,7 @@ def test_durations(start, end, duration):
 
 # ---- LOGLEVEL TESTS ----------------------
 
-def test_loglevel_dir(
+#def test_loglevel_dir(
 
 
 
