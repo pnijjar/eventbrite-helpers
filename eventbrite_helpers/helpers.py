@@ -806,10 +806,6 @@ def load_config(configfile=None):
 
     config_location=None
 
-    if configfile: 
-        config_location=configfile
-    else: 
-        config_location = DEFAULT_CONFIG_SOURCEFILE
 
     # Now parse commandline options (Here??? This code smells bad.)
     parser = argparse.ArgumentParser(
@@ -842,12 +838,14 @@ def load_config(configfile=None):
         choices=LOGLEVELS,
         )
 
-
     args = parser.parse_args()
-    if args.configfile:
+
+    if configfile:
+        config_location=configfile
+    elif args.configfile: # Ugh. Default value will take precedence.
         config_location = os.path.abspath(args.configfile)
-
-
+    else: 
+        config_location = DEFAULT_CONFIG_SOURCEFILE
 
     # http://stackoverflow.com/questions/11990556/python-how-to-make-global
     global config
