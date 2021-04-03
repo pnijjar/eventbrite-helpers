@@ -7,6 +7,7 @@ import jinja2
 import pytz, datetime, dateutil.parser
 import re
 import logging, logging.handlers
+import pprint
 from bs4 import BeautifulSoup
 
 RSS_TEMPLATE="rss_template_eventbrite.jinja2"
@@ -19,12 +20,15 @@ LOGLEVELS = ['debug', 'info', 'warning', 'error', 'critical', 'silent']
 LOGGING_MAX_LOGFILE_SIZE = 1024 * 1024
 LOGGING_NUM_LOGFILES_TO_KEEP = 5
 
+# Save each step of the operation?
+DUMP=False
 
 # See:
 # https://stackoverflow.com/questions/730133/invalid-characters-in-xml
 INVALID_XML_CHARS=re.compile(
   r'[^\u0009\u000a\u000d\u0020-\ud7ff\ue000-\uFFFD\u10000-\u10ffff]'
   )
+INVALID_FILENAME_CHARS=re.compile(r'[/?]')
 
 LIMIT_FETCH = False
 SKIP_API = False
@@ -96,6 +100,16 @@ def url_to_id(url):
         raise NoEventbriteIDException("No ID in URL {}".format(url))
 
     return id
+
+# -----------------------------
+def url_to_filename(url):
+    """ Convert url to a string that can be a filename. Slashes are
+        bad. Periods are okay? Query strings are bad?
+    """
+
+    return re.sub(INVALID_FILENAME_CHARS, "_", url)
+
+
 
 # -----------------------------
 def event_is_virtual(event):
@@ -837,6 +851,9 @@ def load_config(configfile=None):
         help='Log level messages to print to the display.',
         choices=LOGLEVELS,
         )
+    parser.add_argument('--dump-dir',
+        help='Dump intermediate results in this folder',
+        )
 
     args = parser.parse_args()
 
@@ -849,16 +866,6 @@ def load_config(configfile=None):
 
     # http://stackoverflow.com/questions/11990556/python-how-to-make-global
     global config
-
-    if args.small:
-        # Ugh. Bad code smell. Should not use globals (but config.* is
-        # okay?)
-        global LIMIT_FETCH
-        LIMIT_FETCH = True
-    
-    if args.skip_api:
-        global SKIP_API
-        SKIP_API = True
 
     # Blargh. You can load modules from paths, but the syntax is
     # different depending on the version of python. 
@@ -883,6 +890,37 @@ def load_config(configfile=None):
 
 
     config_logging(config, args)
+
+    if args.small:
+        # Ugh. Bad code smell. Should not use globals (but config.* is
+        # okay?)
+        global LIMIT_FETCH
+        LIMIT_FETCH = True
+    
+    if args.skip_api:
+        global SKIP_API
+        SKIP_API = True
+
+    if args.dump_dir:
+        global DUMP
+        DUMP = True
+        config.dump_dir = args.dump_dir
+
+        # Check if folder exists. If not, create it. 
+        if os.path.exists(args.dump_dir) and \
+          not os.path.isdir(args.dump_dir):
+            logging.warning(
+              "Uh oh. {} exists but is not a dir. Not dumping.".format(
+                args.dump_dir))
+            DUMP = False
+        elif not os.path.isdir(args.dump_dir):
+            logging.info("{} does not exist. Creating".format(
+              args.dump_dir))
+            os.makedirs(args.dump_dir)
+        else:
+            logging.debug("{} exists. Reusing!".format(
+              args.dump_dir))
+
 
     # For test harness
     return config
@@ -1046,6 +1084,10 @@ def traverse_pages(target, json_so_far, pages_available, page_limit):
     page_limit: maximum pages to consume (determined by us)
     """
 
+    if DUMP:
+        htmldir = ensure_dumpdir("html-pages")
+        jsondir = ensure_dumpdir("json-from-html")
+
     curr_page = 2
     while (curr_page <= page_limit) \
       and (curr_page <= pages_available):
@@ -1066,8 +1108,15 @@ def traverse_pages(target, json_so_far, pages_available, page_limit):
             return json_so_far
 
         page = BeautifulSoup(r.text, 'html.parser')
-
         new_json = extract_events(page)
+
+        if DUMP:
+            filename = url_to_filename(r.url)
+            dump_file(r.text, htmldir, filename, "html")
+            dump_file(new_json, jsondir, filename, "json")
+
+
+
         json_so_far = json_so_far + new_json
 
         curr_page = curr_page + 1
@@ -1081,15 +1130,18 @@ def download_events():
 
     all_events = json.loads('[]')
 
+    if DUMP:
+        htmldir = ensure_dumpdir("html-pages")
+        jsondir = ensure_dumpdir("json-from-html")
+
     for target in config.EVENTBRITE_TARGET_URLS:
         r = requests.get(target)
         r.raise_for_status()
 
         # Get the JSON I want
         page = BeautifulSoup(r.text, 'html.parser')
+        
 
-        #with open(OUT_HTML, 'w') as f:
-        #    f.write(r.text)
 
         # TODO: Put this in a try/catch block or something, in case
         # there is no such thing.
@@ -1110,6 +1162,11 @@ def download_events():
             total_pages = 1
             
         events = extract_events(page)
+
+        if DUMP:
+            filename = url_to_filename(target)
+            dump_file(r.text, htmldir, filename, "html")
+            dump_file(events, jsondir, filename, "json")
 
         if not LIMIT_FETCH:
             events = traverse_pages(
@@ -1269,6 +1326,41 @@ def clean_event_dict(event_dict, ids_to_delete):
     for id in ids_to_delete:
         del event_dict[id]
 
+# ------------------------------
+def ensure_dumpdir(subdir):
+    """ Make sure a subfolder of config.dump_dir exists with name
+        subdir. Return the full path of that folder.
+
+        Pre: DUMP is true, and config.dump_dir is defined.
+    """
+
+    fullpath = os.path.join(config.dump_dir, subdir)
+
+    if not os.path.isdir(fullpath):
+        os.makedirs(fullpath)
+
+    return fullpath
+
+# -----------------------------
+def dump_file(target, dumpdir, filename, file_ext):
+    """ Dump a file of type file_ext to dumpdir/filename.file_ext .
+        Any previously existing file will be overwritten!
+    
+        Pre: DUMP is true, dumpdir exists and is writeable, 
+        file_ext is one of "json", "txt", "html"
+    """
+
+    dumpfile = "{}.{}".format(filename, file_ext)
+    dump_path = os.path.join(dumpdir, dumpfile)
+
+    with open(dump_path, "w", encoding='utf8') as out:
+        if file_ext == "json":
+            json.dump( target, out, indent=2, separators=(',', ': '))
+        elif file_ext == "txt":
+            pprint.pprint(target, stream=out)
+        elif file_ext == "html":
+            out.write(target)
+        
 
 # ------------------------------
 def write_transformation(transforms):
@@ -1291,26 +1383,41 @@ def write_transformation(transforms):
     # This is still sketchy, because we are still not testing for 
     # malicious input!
 
+    if DUMP:
+        ddir = config.dump_dir
+
     event_dict = {} 
     if os.path.isfile(config.OUT_EVENT_DICT):
         with open(config.OUT_EVENT_DICT, "r", encoding='utf8') as injson:
             event_dict = json.load(injson)
 
+        if DUMP:
+            dump_file(event_dict, ddir, "00-orig-events", 
+              "json")
+
     if not SKIP_API: # Yay double negative
         raw_events = download_events()
+
         incorporate_events(event_dict, raw_events)
+
+        if DUMP:
+            dump_file(raw_events, ddir, "05-raw-events", "json")
+            dump_file(event_dict, ddir, "10-merged-events", "json")
 
         logging.info("Made {} API calls".format(_num_api_calls))
 
-    # Save early and late, in case there are bugs in between.
-    # TODO: Get rid of this
-    with open(config.OUT_EVENT_DICT, "w", encoding='utf8') as out_events:
-        json.dump(event_dict, out_events, indent=2, separators=(',', ': '))
 
     nice_json, filtered_json, virtual_json, old_ids \
       = prepare_event_lists(event_dict)
     clean_event_dict(event_dict, old_ids)
 
+    if DUMP:
+        dump_file(nice_json, ddir, "15-nice-events", "json")
+        dump_file(filtered_json, ddir, "20-filtered-events", "json")
+        dump_file(virtual_json, ddir, "25-virtual-events", "json")
+        dump_file(old_ids, ddir, "30-old-ids", "txt")
+
+    # Incorporate into dump_file?
     with open(config.OUT_EVENT_DICT, "w", encoding='utf8') as out_events:
         json.dump(event_dict, out_events, indent=2, separators=(',', ': '))
 
