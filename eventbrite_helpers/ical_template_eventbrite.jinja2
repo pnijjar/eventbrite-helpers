@@ -21,7 +21,7 @@ DESCRIPTION:
 {%- set fullurl = '<p><a href="' ~ cleanurl ~ '">' ~ cleanurl ~
     '</a></p>' -%}
 {{- fullurl | ical_block("DESCRIPTION:") -}}
-{%- if item['is_free'] == false %}
+{%- if item['is_free'] == false and item['ticket_availability'] is defined %}
     {{' '}}\n<p><strong>Tickets:</strong>
     {{- feed_currency -}}
     {{- item['ticket_availability']['minimum_ticket_price']['major_value'] | ical_escape -}}

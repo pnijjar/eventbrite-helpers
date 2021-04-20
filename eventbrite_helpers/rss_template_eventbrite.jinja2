@@ -52,20 +52,26 @@
                     unknown.
                 {% endif %}
                 &lt;/p&gt;
-           
-                {% if item['is_free'] == false -%}
-                    &lt;p&gt;
-                    &lt;strong&gt;Tickets: &lt;/strong&gt;
-                    {{- feed_currency -}}
-                    {{- item['ticket_availability']['minimum_ticket_price']['major_value'] -}}
 
-                    {%- if item['ticket_availability']['minimum_ticket_price']['major_value']
-                       != item['ticket_availability']['maximum_ticket_price']['major_value'] -%}
-                         {{- ' - ' ~ feed_currency -}}
-                         {{- item['ticket_availability']['maximum_ticket_price']['major_value'] -}}
-                    {%- endif -%}
+                {% if item['ticket_availability'] is defined %}
+                    {% if item['is_free'] == false -%}
+                        &lt;p&gt;
+                        &lt;strong&gt;Tickets: &lt;/strong&gt;
+                        {{- feed_currency -}}
+                        {{- item['ticket_availability']['minimum_ticket_price']['major_value'] -}}
+
+                        {%- if item['ticket_availability']['minimum_ticket_price']['major_value']
+                           != item['ticket_availability']['maximum_ticket_price']['major_value'] -%}
+                             {{- ' - ' ~ feed_currency -}}
+                             {{- item['ticket_availability']['maximum_ticket_price']['major_value'] -}}
+                        {%- endif -%}
+                        &lt;/p&gt;
+                    {%- endif %}
+                {% else %}
+                    &lt;p&gt;
+                    &lt;strong&gt;Ticket price not defined!! &lt;/strong&gt;
                     &lt;/p&gt;
-                {%- endif %}
+                {% endif %}
                 
                 &lt;p&gt;
                 &lt;strong&gt;Organizer: &lt;/strong&gt;{{ item['organizer']['name'] }} (ID: {{ item['organizer']['id'] }})
