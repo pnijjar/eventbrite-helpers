@@ -63,6 +63,7 @@ LOGFILE=os.path.join(SRCDIR, "logs", "eventbrite.log")
 # Call the function with --help to see the allowed values.
 LOGLEVEL_FILE='info'
 LOGLEVEL_SCREEN='error'
+LOGLEVEL_DISPLAY='error'
 
 # Who is responsible for this feed
 WEBMASTER="admin@example.com"
