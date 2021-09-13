@@ -42,6 +42,10 @@
                 &lt;/p&gt;
                 
                 &lt;p&gt;
+                &lt;strong&gt;Organizer: &lt;/strong&gt;{{ item['organizer']['name'] }} (ID: {{ item['organizer']['id'] }})
+                &lt;/p&gt;
+
+                &lt;p&gt;
                 &lt;strong&gt;Location: &lt;/strong&gt;
                 {%- if item['extrainfo']['virtual'] == true -%}
                     online 
@@ -73,9 +77,6 @@
                     &lt;/p&gt;
                 {% endif %}
                 
-                &lt;p&gt;
-                &lt;strong&gt;Organizer: &lt;/strong&gt;{{ item['organizer']['name'] }} (ID: {{ item['organizer']['id'] }})
-                &lt;/p&gt;
 
                 &lt;p&gt;
                 &lt;/p&gt;
