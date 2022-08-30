@@ -1045,6 +1045,8 @@ def extract_events(page):
     """ Parse json events from requested page
     
     page: a BeautifulSoup object
+
+    returns: a list?
     """
     event_script = page.find_all(type="application/ld+json")
 
@@ -1070,17 +1072,18 @@ def extract_events(page):
 
             best_candidate = can_json
           
-    return best_candidate            
+    if not best_candidate:
+        return []
+    else: 
+        return best_candidate            
 
     
 # -------
-def traverse_pages(target, json_so_far, pages_available, page_limit):
+def traverse_pages(target, json_so_far, page_limit):
     """ Pull JSON from pages, to desired limit
 
     target : URL to fetch
     json_so_far : collected events up to this point
-    pages_available: how many pages can be consumed (reported by
-      Eventbrite)
     page_limit: maximum pages to consume (determined by us)
     """
 
@@ -1089,8 +1092,9 @@ def traverse_pages(target, json_so_far, pages_available, page_limit):
         jsondir = ensure_dumpdir("json-from-html")
 
     curr_page = 2
+    keep_going = True
     while (curr_page <= page_limit) \
-      and (curr_page <= pages_available):
+      and keep_going:
         
 
         payload = {'page': curr_page}
@@ -1101,9 +1105,10 @@ def traverse_pages(target, json_so_far, pages_available, page_limit):
             logging.debug("Fetched page {}: {}".format(curr_page, r.url))
         except requests.exceptions.HTTPError as e:
             logging.warn("Oy. Received status {} for"
-              "url {}.  Bailing".format(
+              "url {} on page {}.  Bailing".format(
                 r.status,
                 r.url,
+                curr_page,
                 )) 
             return json_so_far
 
@@ -1115,12 +1120,16 @@ def traverse_pages(target, json_so_far, pages_available, page_limit):
             dump_file(r.text, htmldir, filename, "html")
             dump_file(new_json, jsondir, filename, "json")
 
-
-
-        json_so_far = json_so_far + new_json
+        if new_json: 
+            json_so_far = json_so_far + new_json
 
         curr_page = curr_page + 1
 
+        if not page.find('button', { 'data-spec': 'page-next' }):
+            keep_going = False
+
+    logging.info("Traversed {} pages".format(curr_page - 1))
+    
     return json_so_far
 
 # ----------------------------
@@ -1142,24 +1151,30 @@ def download_events():
         page = BeautifulSoup(r.text, 'html.parser')
         
 
+        # Update 2022-08-30: on 2022-07-27 Eventbrite changed 
+        # something, and this div disappeared from the interface.
 
         # TODO: Put this in a try/catch block or something, in case
         # there is no such thing.
-        total_pages = 1
-        try:
-            total_pages_div = page.find( 
-              'div', 
-              {'data-spec': 'paginator__last-page-link'}
-              )
-            total_pages = int(total_pages_div.a.contents[0])
-            logging.info(
-              "{}: I think there are {} pages in total".format(
-                target,
-                total_pages,
-                ))
-        except Exception as e:
-            logging.debug("No paginator found on {}".format( target))
-            total_pages = 1
+        #total_pages = 1
+        #try:
+        #    total_pages_div = page.find( 
+        #      'div', 
+        #      {'data-spec': 'paginator__last-page-link'}
+        #      )
+        #    total_pages = int(total_pages_div.a.contents[0])
+        #    logging.info(
+        #      "{}: I think there are {} pages in total".format(
+        #        target,
+        #        total_pages,
+        #        ))
+        #except Exception as e:
+        #    logging.debug("No paginator found on {}".format( target))
+        #    total_pages = 1
+
+        attempt_traverse = False
+        if page.find('button', { 'data-spec': 'page-next' }):
+            attempt_traverse = True
             
         events = extract_events(page)
 
@@ -1168,11 +1183,10 @@ def download_events():
             dump_file(r.text, htmldir, filename, "html")
             dump_file(events, jsondir, filename, "json")
 
-        if not LIMIT_FETCH:
+        if attempt_traverse and not LIMIT_FETCH:
             events = traverse_pages(
               target, 
               events, 
-              total_pages,
               config.MAX_EVENTBRITE_PAGES_TO_FETCH
               )
         logging.info("{}: Got {} items!".format(
