@@ -1125,8 +1125,12 @@ def traverse_pages(target, json_so_far, page_limit):
 
         curr_page = curr_page + 1
 
-        if not page.find('button', { 'data-spec': 'page-next' }):
+        #if not page.find('button', { 'data-spec': 'page-next' }):
+        #    keep_going = False
+
+        if page.find('section', {'class': 'search-result-pivots__empty-state'}):
             keep_going = False
+            logging.info("Found empty search result on page {}".format(curr_page - 1))
 
     logging.info("Traversed {} pages".format(curr_page - 1))
     
@@ -1149,32 +1153,41 @@ def download_events():
 
         # Get the JSON I want
         page = BeautifulSoup(r.text, 'html.parser')
+
+        logging.info("{}: Got initial data".format(target))
         
 
         # Update 2022-08-30: on 2022-07-27 Eventbrite changed 
         # something, and this div disappeared from the interface.
 
-        # TODO: Put this in a try/catch block or something, in case
-        # there is no such thing.
-        #total_pages = 1
-        #try:
-        #    total_pages_div = page.find( 
-        #      'div', 
-        #      {'data-spec': 'paginator__last-page-link'}
-        #      )
-        #    total_pages = int(total_pages_div.a.contents[0])
-        #    logging.info(
-        #      "{}: I think there are {} pages in total".format(
-        #        target,
-        #        total_pages,
-        #        ))
-        #except Exception as e:
-        #    logging.debug("No paginator found on {}".format( target))
-        #    total_pages = 1
+        total_pages = 1
+        try:
+            total_pages_div = page.find( 
+              'div', 
+              {'data-spec': 'paginator__last-page-link'}
+              )
+            if total_pages_div:
+                total_pages = int(total_pages_div.a.contents[0])
+                logging.info(
+                  "{}: I think there are {} pages in total".format(
+                    target,
+                    total_pages,
+                    ))
+            else:
+                logging.debug("{}: Only one page found".format(target))
+                total_pages = 1
+        except Exception as e:
+            logging.debug("No paginator found on {}".format( target))
+            total_pages = 1
 
-        attempt_traverse = False
-        if page.find('button', { 'data-spec': 'page-next' }):
-            attempt_traverse = True
+        #attempt_traverse = False
+
+        #if page.find('button', { 'data-spec': 'page-next' }):
+
+        #if not page.find('section', {'class': 'search-result-pivots__empty-state'}):
+        #    attempt_traverse = True
+        #else:
+        #    logging.info("Only one page found on {}".format(target))
             
         events = extract_events(page)
 
@@ -1183,11 +1196,11 @@ def download_events():
             dump_file(r.text, htmldir, filename, "html")
             dump_file(events, jsondir, filename, "json")
 
-        if attempt_traverse and not LIMIT_FETCH:
+        if total_pages > 1 and not LIMIT_FETCH:
             events = traverse_pages(
               target, 
               events, 
-              config.MAX_EVENTBRITE_PAGES_TO_FETCH
+              min(total_pages, config.MAX_EVENTBRITE_PAGES_TO_FETCH)
               )
         logging.info("{}: Got {} items!".format(
           target,
