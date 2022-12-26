@@ -8,6 +8,7 @@ import pytz, datetime, dateutil.parser
 import re
 import logging, logging.handlers
 import pprint
+import yaml
 from bs4 import BeautifulSoup
 
 RSS_TEMPLATE="rss_template_eventbrite.jinja2"
@@ -15,10 +16,6 @@ ICAL_TEMPLATE="ical_template_eventbrite.jinja2"
 
 # Order is important! More verbose is earlier.
 LOGLEVELS = ['debug', 'info', 'warning', 'error', 'critical', 'silent']
-
-# Probably these should be configurable. Oh wells.
-LOGGING_MAX_LOGFILE_SIZE = 1024 * 1024
-LOGGING_NUM_LOGFILES_TO_KEEP = 5
 
 # Save each step of the operation?
 DUMP=False
@@ -108,8 +105,6 @@ def url_to_filename(url):
     """
 
     return re.sub(INVALID_FILENAME_CHARS, "_", url)
-
-
 
 # -----------------------------
 def event_is_virtual(event):
@@ -739,13 +734,21 @@ def config_logging(config, args):
         loglevel_file = args.loglevel_file
     else:
         # Better hope this is defined!
-        loglevel_file = config.LOGLEVEL_FILE
+        loglevel_file = config['logging']['loglevel_file']
 
     if loglevel_file != 'silent':
+        logfile_full = config['logging']['logfile']
+
+        if config['logging'].get('relative_to_log_path'):
+            logfile_full = "{}/{}".format(
+              config['paths']['log_path'],
+              config['logging']['logfile'],
+              )
+
         loghandler = logging.handlers.RotatingFileHandler(
-          filename=config.LOGFILE,
-          maxBytes=LOGGING_MAX_LOGFILE_SIZE,
-          backupCount=LOGGING_NUM_LOGFILES_TO_KEEP,
+          filename=logfile_full,
+          maxBytes=config['logging']['max_logfile_size'],
+          backupCount=config['logging']['num_logfiles_to_keep'],
           )
 
         # Could factor out these lines into a new helper
@@ -760,7 +763,7 @@ def config_logging(config, args):
     elif args.loglevel_display:
         loglevel_display = args.loglevel_display
     else:
-        loglevel_display = config.LOGLEVEL_DISPLAY
+        loglevel_display = config['logging']['loglevel_display']
 
     if loglevel_display != 'silent':
         loghandler_display = logging.StreamHandler()
@@ -802,25 +805,24 @@ def config_logging(config, args):
 
 
 ## ------------------------------
-def load_config(configfile=None):
-    """ Load configuration definitions.
-       (This is really scary, actually. We are trusting that the 
-       config.py we are taking as input is sane!) 
+def load_config_yaml(configfile=None):
+    """ Load config definitions from YAML file.
 
-       If both the commandline and the parameter are 
-       specified then the commandline takes precedence.
+    I feel the commandline arg should be mandatory?
+
+    Return the config dict. It can be global later.
+
     """
+    with open(configfile, encoding='utf-8') as f:
+        config = yaml.load(f, Loader=yaml.SafeLoader)
 
-    # '/home/pnijjar/watcamp/python_rss/gcal_helpers/config.py'
-    # See: http://www.karoltomala.com/blog/?p=622
-    DEFAULT_CONFIG_SOURCEFILE = os.path.join(
-        os.getcwd(),
-        'config.py',
-        )
+    return config
 
-    config_location=None
-
-
+## ------------------------------
+def parse_args():
+    """ Parse commandline args. Return the args thingy. (What is it?
+        A module? It is like a dict.
+    """
     # Now parse commandline options (Here??? This code smells bad.)
     parser = argparse.ArgumentParser(
         description="Generate RSS (and maybe other things)"
@@ -828,8 +830,8 @@ def load_config(configfile=None):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         )
     parser.add_argument('-c', '--configfile', 
+        required=True,
         help='configuration file location',
-        default=DEFAULT_CONFIG_SOURCEFILE,
         )
     parser.add_argument('-s', '--small',
         help='small: retrieve fewer entries',
@@ -857,37 +859,22 @@ def load_config(configfile=None):
 
     args = parser.parse_args()
 
-    if configfile:
-        config_location=configfile
-    elif args.configfile: # Ugh. Default value will take precedence.
-        config_location = os.path.abspath(args.configfile)
-    else: 
-        config_location = DEFAULT_CONFIG_SOURCEFILE
+    return args
+    
 
-    # http://stackoverflow.com/questions/11990556/python-how-to-make-global
+## ------------------------------
+def load_config(configfile=None):
+    """ Load configuration definitions.
+       (This is really scary, actually. We are trusting that the 
+       config.py we are taking as input is sane!) 
+
+       If both the commandline and the parameter are 
+       specified then the commandline takes precedence.
+    """
+
+    args = parse_args()
     global config
-
-    # Blargh. You can load modules from paths, but the syntax is
-    # different depending on the version of python. 
-    # http://stackoverflow.com/questions/67631/how-to-import-a-mod
-    # https://stackoverflow.com/questions/1093322/how-do-i-ch
-
-    if sys.version_info >= (3,5): 
-        import importlib.util 
-        spec = importlib.util.spec_from_file_location(
-            'config',
-            config_location,
-            )
-        config = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(config)
-    elif sys.version_info >= (3,3):
-        # This is the only one I can test. Sad!
-        from importlib.machinery import SourceFileLoader
-        config = SourceFileLoader( 'config', config_location,).load_module()
-    else:
-        import imp
-        config = imp.load_source( 'config', config_location,)
-
+    config = load_config_yaml(args.configfile)
 
     config_logging(config, args)
 
