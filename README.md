@@ -34,16 +34,15 @@ Deployment
   /usr/bin/python3 venv`
 - Activate the environment: `source venv/bin/activate`
 - Install dependencies: `pip install -r requirements.txt`
-- Copy `config.py.example` to `config-demo.py` and customize it to your
+- Copy `config.yaml.example` to `config-demo.yaml` and customize it to your
   needs.
-- Run `gen_rss_eventbrite.py --config config-demo.py`
-  or `gen_ical_eventbrite.py --config config-demo.py` 
-  or `gen_rss_ical_eventbrite.py --config config-demo.py` 
+- Run `gen_rss_eventbrite.py --config config-demo.yaml`
+  or `gen_ical_eventbrite.py --config config-demo.yaml` 
+  or `gen_rss_ical_eventbrite.py --config config-demo.yaml` 
 
 
 Caveats
 -------
 
-- `config.py` is sourced by the script and is dangerous!
 - It does not appear that you can protect this API key by IP address
-  or anything.
+  or anything. Try hard not to check it into a public Git repo. 

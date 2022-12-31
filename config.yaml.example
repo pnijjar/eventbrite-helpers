@@ -1,0 +1,134 @@
+
+paths:
+  # Path for generated feeds
+  # Each use of these has an optional boolean: "relative_to_X_path"
+  #  - true : use this path
+  #  - false or absent: use absolute path
+  cache_path: /tmp/eventbrite_helpers/cache
+  publish_path: /tmp/eventbrite_helpers/rss
+  log_path: /tmp/eventbrite_helpers/logs
+
+  # This should not exist! 
+  src_path: /usr/local/src/eventbrite_helpers
+  template_path: /usr/local/src/eventbrite_helpers/eventbrite_helpers
+
+  # Where to keep cached json
+  # This replaces OUT_EVENT_DICT
+  cache_file: 
+    name: eventbrite-events-processed.json 
+    relative_to_cache_path: true
+
+
+eventbrite:
+  # An anonymous access token is fine
+  api_token: "YOURTOKENHERE"
+
+  # In what geographic rectangle must events be to count as "local"?
+  # This is pretty ad-hoc, because most regions (not even
+  # Saskatchewan!) are actually rectangular. But this is a rough bound 
+  # so that events from far away will not be included. 
+  geo_boundary:
+    lat_max: 43.689111
+    lat_min: 43.266807
+    long_max: -80.189287
+    long_min: -80.869031
+
+  # Do we attempt to get full descriptions from the
+  # /events/(event_id)/description endpoint? 
+  # This costs one API call PER EVENT, and you get 1000 events/hour
+  get_full_descriptions: true
+
+  # There can be many pages of results. How many should we get?
+  # As we go down the pages events tend to get further away.
+  # This is per entry on EVENTBRITE_TARGET_URLS. Set to a big number
+  # to get everything, but keep in mind that every new event costs 2 API
+  # calls, and this is per URL, not overall (sorry).
+  max_pages_to_fetch: 10
+
+  # Include only events changed since this time delta
+  # Set to -1 if you want everything
+  query_events_changed_days: 14
+
+  # What version of the API requires full description calls?
+  # Anything higher than this will be subject to the additional API
+  # call. 3.0.0 is fine, and as of this writing I only see 3.0.0 and
+  # 3.7.0 
+  split_description_api: "3.7.0"
+
+
+  # Collection of Eventbrite "tagged" URLs. Look for events here. 
+  # Organizations and "Things to do in X" will work, and maybe others 
+  # if there is exactly one JSON list of events in the tag "<script
+  # type="application/ld+json"> ... </script>" in the page.
+
+  target_urls: 
+    - 'https://www.eventbrite.com/o/the-new-republic-31358633543'
+    - 'https://www.eventbrite.ca/d/canada--waterloo--10327/all-events/'
+
+  # list of organizer_id fields to filter.
+  # These organizers flood Eventbrite with events that are not
+  # personally relevant, and so get a different feed.
+  # (Yes, having another YAML field for the names would be more
+  # correct, but I don't really care.)
+  filtered_organizers:
+    - "6827056193" # Manhattan Young Democrats
+
+
+feeds:
+  # Website that hosts these feeds
+  website: https://feeds.example.com
+
+  # These get published in the RSS feeds
+  webmaster: admin@example.com
+  webmaster_name: "Webmaster"
+
+  # For datetime nonsense
+  timezone: "America/Toronto"
+
+  # What is the currency used in this application? I guess you are in 
+  # trouble if there are multiple currencies. You can probably be more
+  # sophisticated by translating the currency code (eg "CAN") to a
+  # symbol, but this is good enough for me. 
+  currency_symbol: '$'
+
+  # Specify the feed descriptions. The base/filtered/virtual feeds
+  # are hardcoded in the script.
+  # The names do not include .rss or .ics.
+  # Both RSS and iCal are put in the same folder. Sorry?
+  base_feed:
+    name: eventbrite
+    relative_to_publish_path: true
+    title: "Eventbrite: Events we care about"
+    description: >
+      Interesting events happening nearby.
+      We can have many lines of description!
+
+  filtered_feed:
+    name: eventbrite-filtered
+    relative_to_publish_path: true
+    title: "Eventbrite: Events we care less about"
+    description: >
+      These events are repetitive, irrelevant, or boring.
+      But maybe you will like them!
+
+  virtual_feed:
+    name: eventbrite-virtual
+    relative_to_publish_path: true
+    title: "Eventbrite: Virtual Events"
+    description: >
+      Online events (mostly) from organizations we like. These are not
+      in the main feed because they do not have a geographic location.
+
+logging:
+  logfile: eventbrite.log
+  relative_to_log_path: true
+
+  loglevel_file: info
+  loglevel_display: error
+  
+  # In kb?
+  max_logfile_size: 1024000
+  num_logfiles_to_keep: 5
+
+
+

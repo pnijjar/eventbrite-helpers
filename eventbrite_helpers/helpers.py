@@ -139,11 +139,12 @@ def event_in_boundary(event):
 
     else:
         geo = event['location']['geo']
+        conf_geo = config['eventbrite']['geo_boundary']
         
-        if float(geo['latitude']) >= config.GEO_BOUNDARY['lat_min'] \
-          and float(geo['latitude']) <= config.GEO_BOUNDARY['lat_max'] \
-          and float(geo['longitude']) >= config.GEO_BOUNDARY['long_min'] \
-          and float(geo['longitude']) <= config.GEO_BOUNDARY['long_max']:
+        if float(geo['latitude']) >=  conf_geo['lat_min'] \
+          and float(geo['latitude']) <= conf_geo['lat_max'] \
+          and float(geo['longitude']) >= conf_geo['long_min'] \
+          and float(geo['longitude']) <= conf_geo['long_max']:
 
             return True
         else:
@@ -275,7 +276,7 @@ def get_duration_in_minutes(end_date, start_date):
 # ------------------------------
 def get_time_now():
    
-    target_timezone = pytz.timezone(config.TIMEZONE)
+    target_timezone = pytz.timezone(config['feeds']['timezone'])
     time_now = datetime.datetime.now(tz=target_timezone)
 
     return time_now
@@ -372,10 +373,13 @@ def call_events_api():
     curr_page = 1
     more_items = True
 
-    query_args = config.QUERY_ARGS
+    # XXX - DANGER because this used to be config.QUERY_ARGS
+    query_args = {} 
 
-    if config.QUERY_EVENTS_CHANGED_DAYS: 
-        since = datetime.timedelta(days=config.QUERY_EVENTS_CHANGED_DAYS)
+    if config['eventbrite']['query_events_changed_days'] >= 0:
+        since = datetime.timedelta(
+          days=config['eventbrite']['query_events_changed_days']
+          )
         # Make a query relative to now, minus the delta.
         now = get_time_now()
         cutoff = now - since
@@ -388,7 +392,7 @@ def call_events_api():
 
     while more_items: 
         api_params = { 
-          'token': config.API_TOKEN,
+          'token': config['eventbrite']['api_token'],
           'page' : curr_page,
           'expand' : 'venue,ticket_availability,description',
           }
@@ -444,11 +448,12 @@ def call_events_api():
     # The easy way to deal with this is to get the full description 
     # for EVERYTHING, since everything will eventually migrate to the 
     # new API. 
-    if config.GET_FULL_DESCRIPTIONS:
+    if config['eventbrite']['get_full_descriptions']:
         desc_ids = [] 
         desc_params = []
         for event in event_list:
-            if event['version'] >= config.SPLIT_DESCRIPTION_API: 
+            if event['version'] >= \
+              config['eventbrite']['split_description_api']:
                 desc_ids.append(event['id'])
                 desc_params.append({
                   'method': 'GET',
@@ -464,7 +469,7 @@ def call_events_api():
             num_events = len(event_list)
             #print("Got {} IDs".format(len(desc_ids)))
             desc_api_params = {
-              'token': config.API_TOKEN,
+              'token': config['eventbrite']['api_token']
               }
 
             batch_params = {
@@ -542,13 +547,13 @@ def get_event_from_api(id):
       )
 
     event_api_params = { 
-      'token': config.API_TOKEN,
+      'token': config['eventbrite']['api_token'],
       'expand' : \
         'venue,organizer,ticket_availability',
       }
 
     desc_api_params = { 
-      'token': config.API_TOKEN,
+      'token': config['eventbrite']['api_token'],
        }
 
 
@@ -556,7 +561,7 @@ def get_event_from_api(id):
         event = call_api(event_api_url, event_api_params)
 
         # TODO: Get rid of this option?
-        if config.GET_FULL_DESCRIPTIONS:
+        if config['eventbrite']['get_full_descriptions']:
             desc = call_api(desc_api_url, desc_api_params)
             event['full_description'] = desc['description']
     
@@ -578,14 +583,15 @@ def print_json(j):
 
 
 # ------------------------------
-def generate_ical(cal_dict, feed_title):
-    """ Generate an iCal feed given a JSON file.
+def generate_ical(cal_dict, conf, feed_key):
+    """ Generate an iCal feed given a JSON file. The feed_key should
+        be a feed defined in the config file. eg 'base_feed'
     """
 
     # --- Process template 
 
     template_loader = jinja2.FileSystemLoader(
-        searchpath=config.TEMPLATE_DIR
+        searchpath=config['paths']['template_path']
         )
     template_env = jinja2.Environment( 
         loader=template_loader,
@@ -603,22 +609,29 @@ def generate_ical(cal_dict, feed_title):
 
     # Remove http:// or https:// from the website.
     # This produces a LIST, and we take the final part.
-    bare_website = config.WEBSITE.split("//")[-1]
+    bare_website = conf['feeds']['website'].split("//")[-1]
+
+    feed_info = conf['feeds'][feed_key]
+
+    selflink = "{}/{}.ics".format(
+      conf['feeds']['website'],
+      feed_info['name'],
+      )
 
     template = template_env.get_template( ICAL_TEMPLATE ) 
     template_vars = { 
-      "feed_title": feed_title,
-      "feed_description": config.FEED_DESCRIPTION,
-      "feed_webmaster" : config.WEBMASTER,
-      "feed_webmaster_name" : config.WEBMASTER_NAME,
+      "feed_title": feed_info['title'],
+      "feed_description": feed_info['description'],
+      "feed_webmaster" : conf['feeds']['webmaster'],
+      "feed_webmaster_name" : conf['feeds']['webmaster_name'],
       "feed_builddate" : time_now_formatted,
       "feed_pubdate" : time_now_formatted,
       "feed_website" : bare_website,
       "feed_items" : cal_dict,
-      "feed_selflink" : config.FEED_LINK,
-      "feed_currency" : config.CURRENCY_SYMBOL,
-      "feed_full_descriptions" : config.GET_FULL_DESCRIPTIONS,
-      "feed_timezone" : config.TIMEZONE,
+      "feed_selflink" : selflink,
+      "feed_currency" : conf['feeds']['currency_symbol'],
+      "feed_full_descriptions" : conf['eventbrite']['get_full_descriptions'],
+      "feed_timezone" : conf['feeds']['timezone'],
       }
 
     output_ical = template.render(template_vars)
@@ -627,15 +640,16 @@ def generate_ical(cal_dict, feed_title):
 
 
 # ------------------------------
-def generate_rss(cal_dict, feed_title):
+def generate_rss(cal_dict,  conf, feed_key):
     """ Given a JSON formatted calendar dictionary, make and return 
-        the RSS file.
+        the RSS file. feed_key should be defined as a feed in the
+        YAML.
     """
 
     # --- Process template 
 
     template_loader = jinja2.FileSystemLoader(
-        searchpath=config.TEMPLATE_DIR
+        searchpath=config['paths']['template_path']
         )
     template_env = jinja2.Environment( 
         loader=template_loader,
@@ -654,20 +668,27 @@ def generate_rss(cal_dict, feed_title):
     time_now = get_time_now()
     time_now_formatted = time_now.strftime("%a, %d %b %Y %T %z")
 
+    # Copy and paste. What could go wrong?
+    feed_info = conf['feeds'][feed_key]
+
+    selflink = "{}/{}.rss".format(
+      conf['feeds']['website'],
+      feed_info['name'],
+      )
+
     template = template_env.get_template( RSS_TEMPLATE ) 
     template_vars = { 
-      "feed_title": feed_title,
-      "feed_description": config.FEED_DESCRIPTION,
-      "feed_webmaster" : config.WEBMASTER,
-      "feed_webmaster_name" : config.WEBMASTER_NAME,
+      "feed_title": feed_info['title'],
+      "feed_description": feed_info['description'],
+      "feed_webmaster" : conf['feeds']['webmaster'],
+      "feed_webmaster_name" : conf['feeds']['webmaster_name'],
       "feed_builddate" : time_now_formatted,
       "feed_pubdate" : time_now_formatted,
-      "feed_website" : config.WEBSITE,
-      #"feed_logo_url" : config.LOGO,
+      "feed_website" : conf['feeds']['website'],
       "feed_items" : cal_dict,
-      "feed_selflink" : config.FEED_LINK,
-      "feed_currency" : config.CURRENCY_SYMBOL,
-      "feed_full_descriptions" : config.GET_FULL_DESCRIPTIONS,
+      "feed_selflink" : selflink,
+      "feed_currency" : conf['feeds']['currency_symbol'],
+      "feed_full_descriptions" : conf['eventbrite']['get_full_descriptions'],
       }
 
     output_rss = template.render(template_vars)
@@ -865,8 +886,6 @@ def parse_args():
 ## ------------------------------
 def load_config(configfile=None):
     """ Load configuration definitions.
-       (This is really scary, actually. We are trusting that the 
-       config.py we are taking as input is sane!) 
 
        If both the commandline and the parameter are 
        specified then the commandline takes precedence.
@@ -891,7 +910,7 @@ def load_config(configfile=None):
     if args.dump_dir:
         global DUMP
         DUMP = True
-        config.dump_dir = args.dump_dir
+        config['paths']['dump_dir'] = args.dump_dir
 
         # Check if folder exists. If not, create it. 
         if os.path.exists(args.dump_dir) and \
@@ -1134,7 +1153,7 @@ def download_events():
         htmldir = ensure_dumpdir("html-pages")
         jsondir = ensure_dumpdir("json-from-html")
 
-    for target in config.EVENTBRITE_TARGET_URLS:
+    for target in config['eventbrite']['target_urls']:
         r = requests.get(target)
         r.raise_for_status()
 
@@ -1187,8 +1206,9 @@ def download_events():
             events = traverse_pages(
               target, 
               events, 
-              min(total_pages, config.MAX_EVENTBRITE_PAGES_TO_FETCH)
-              )
+              min(total_pages, 
+              config['eventbrite']['max_pages_to_fetch'],
+              ))
         logging.info("{}: Got {} items!".format(
           target,
           len(events))
@@ -1206,7 +1226,7 @@ def incorporate_events(event_dict, new_events):
         new_events: raw downloaded events
     """
 
-    timezone = pytz.timezone(config.TIMEZONE)
+    timezone = pytz.timezone(config['feeds']['timezone'])
     now = get_time_now()
     recent = now - datetime.timedelta(days=1)
 
@@ -1254,7 +1274,8 @@ def incorporate_events(event_dict, new_events):
                 continue
 
             # TODO: Check against blacklist and mark as filtered
-            if api_event["organizer_id"] in config.FILTERED_ORGANIZERS:
+            if api_event["organizer_id"] in \
+              config['eventbrite']['filtered_organizers']:
                 filtered = True
         else:
             # Make a dummy event cheaply
@@ -1296,7 +1317,7 @@ def prepare_event_lists(event_dict):
     virtual_events = []
 
     too_old = get_time_now() - datetime.timedelta(days=1)
-    timezone = pytz.timezone(config.TIMEZONE)
+    timezone = pytz.timezone(config['feeds']['timezone'])
 
 
     for id, event in event_dict.items():
@@ -1342,13 +1363,13 @@ def clean_event_dict(event_dict, ids_to_delete):
 
 # ------------------------------
 def ensure_dumpdir(subdir):
-    """ Make sure a subfolder of config.dump_dir exists with name
-        subdir. Return the full path of that folder.
+    """ Make sure a subfolder of config['paths']['dump_dir'] exists 
+        with name subdir. Return the full path of that folder.
 
-        Pre: DUMP is true, and config.dump_dir is defined.
+        Pre: DUMP is true, and config['paths']['dump_dir'] is defined.
     """
 
-    fullpath = os.path.join(config.dump_dir, subdir)
+    fullpath = os.path.join(config['paths']['dump_dir'], subdir)
 
     if not os.path.isdir(fullpath):
         os.makedirs(fullpath)
@@ -1376,6 +1397,28 @@ def dump_file(target, dumpdir, filename, file_ext):
             out.write(target)
         
 
+
+# ------------------------------
+def get_feed_filename(conf, feed_key, suffix):
+    """ Given the config, a feed key (eg 'base_feed') defined in 
+        the YAML, and a suffix (eg "rss" or "ics") generate the
+        local path to a feed file.
+    """
+
+    feed_info = conf['feeds'][feed_key]
+
+    feed_dir = ""
+    if feed_info['relative_to_publish_path']:
+        feed_dir = conf['paths']['publish_path']
+
+    feed_file = os.path.join(
+      feed_dir,
+      "{}.{}".format(feed_info['name'], suffix),
+      )
+
+    return feed_file
+
+
 # ------------------------------
 def write_transformation(transforms):
     """ Write file(s) for the transformation. The transforms should
@@ -1398,11 +1441,21 @@ def write_transformation(transforms):
     # malicious input!
 
     if DUMP:
-        ddir = config.dump_dir
+        ddir = config['paths']['dump_dir']
 
     event_dict = {} 
-    if os.path.isfile(config.OUT_EVENT_DICT):
-        with open(config.OUT_EVENT_DICT, "r", encoding='utf8') as injson:
+
+    event_cache_file = config['paths']['cache_file']['name']
+
+    if config['paths']['cache_file']['relative_to_cache_path']:
+        event_cache_file = os.path.join(
+          config['paths']['cache_path'],
+          config['paths']['cache_file']['name'],
+          )
+
+
+    if os.path.isfile(event_cache_file):
+        with open(event_cache_file, "r", encoding='utf8') as injson:
             event_dict = json.load(injson)
 
         if DUMP:
@@ -1432,7 +1485,7 @@ def write_transformation(transforms):
         dump_file(old_ids, ddir, "30-old-ids", "txt")
 
     # Incorporate into dump_file?
-    with open(config.OUT_EVENT_DICT, "w", encoding='utf8') as out_events:
+    with open(event_cache_file, "w", encoding='utf8') as out_events:
         json.dump(event_dict, out_events, indent=2, separators=(',', ': '))
 
     destpairs = []
@@ -1442,46 +1495,52 @@ def write_transformation(transforms):
             destpairs.append({
               'generated_file': generate_rss(
                 nice_json,
-                config.FEED_TITLE
+                config,
+                'base_feed',
                 ),
-              'dest': config.OUTRSS
+              'dest': get_feed_filename(config, 'base_feed', 'rss')
               })
             destpairs.append({
               'generated_file': generate_rss(
                 filtered_json,
-                "{} - Filtered Out Events".format(config.FEED_TITLE)
+                config,
+                'filtered_feed',
                 ),
-              'dest': config.OUTRSS_FILTERED
+              'dest': get_feed_filename(config, 'filtered_feed', 'rss')
               })
             destpairs.append({
               'generated_file': generate_rss(
                 virtual_json,
-                "{} - Virtual Events".format(config.FEED_TITLE)
+                config,
+                'virtual_feed',
                 ),
-              'dest': config.OUTRSS_VIRTUAL
+              'dest': get_feed_filename(config, 'virtual_feed', 'rss')
               })
 
         elif transform_type == "ical":
             destpairs.append({
               'generated_file': generate_ical(
                 nice_json,
-                config.FEED_TITLE,
+                config,
+                'base_feed',
                 ),
-              'dest': config.OUTICAL
+              'dest': get_feed_filename(config, 'base_feed', 'ics')
               })
             destpairs.append({
               'generated_file': generate_ical(
                 filtered_json,
-                "{} - Filtered Out Events".format(config.FEED_TITLE)
+                config,
+                'filtered_feed',
                 ),
-              'dest': config.OUTICAL_FILTERED
+              'dest': get_feed_filename(config, 'filtered_feed', 'ics')
               })
             destpairs.append({
               'generated_file': generate_ical(
                 virtual_json,
-                "{} - Virtual Events".format(config.FEED_TITLE)
+                config,
+                'virtual_feed',
                 ),
-              'dest': config.OUTICAL_VIRTUAL
+              'dest': get_feed_filename(config, 'virtual_feed', 'ics')
               })
 
         else:
