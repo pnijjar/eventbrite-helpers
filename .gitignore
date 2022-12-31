@@ -1,8 +1,10 @@
 config*.py
+config*.yaml
 venv/
 bg-research/
 *.swp
 __pycache__/
 output/
 logs/
+garbage/
 *.egg-info
