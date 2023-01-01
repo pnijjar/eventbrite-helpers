@@ -733,12 +733,12 @@ def loglevel_str_to_const(loglevel_str):
     return loglevel
 
 ## -----------------------------
-def config_logging(config, args):
+def config_logging(config, args, configfile):
     """ Set up logging given the config and args.
     """
     formatter = logging.Formatter(
       fmt='%(asctime)s %(levelname)s: %(message)s',
-      datefmt='%Y-%m-%d %H:%M {}'.format(args.configfile),
+      datefmt='%Y-%m-%d %H:%M {}'.format(configfile),
       )
 
     logger = logging.getLogger() # eventbrite_helpers
@@ -748,9 +748,9 @@ def config_logging(config, args):
     #root_logger.setLevel(logging.DEBUG)
 
     loglevel_file = 'silent'
-    if args.verbose:
+    if args and args.verbose:
         loglevel_file = 'debug'
-    elif args.loglevel_file:
+    elif args and args.loglevel_file:
         loglevel_file = args.loglevel_file
     else:
         # Better hope this is defined!
@@ -778,9 +778,9 @@ def config_logging(config, args):
 
 
     loglevel_display = 'silent'
-    if args.verbose:
+    if args and args.verbose:
         loglevel_display = 'debug'
-    elif args.loglevel_display:
+    elif args and args.loglevel_display:
         loglevel_display = args.loglevel_display
     else:
         loglevel_display = config['logging']['loglevel_display']
@@ -844,7 +844,7 @@ def load_config_yaml(configfile=None):
 ## ------------------------------
 def parse_args():
     """ Parse commandline args. Return the args thingy. (What is it?
-        A module? It is like a dict.
+        A module? It is like a dict.)
     """
     # Now parse commandline options (Here??? This code smells bad.)
     parser = argparse.ArgumentParser(
@@ -895,46 +895,48 @@ def load_config(configfile=None):
        Returns config dict
     """
 
-    args = parse_args()
-    if configfile:
+    args = None
+    if not configfile:
         # This is still not going to work with pytest.
         # The configfile is still a required parameter.
         # TODO: Make this better, I guess? I think I want to not
         #   specify a configfile as a parameter here.
-        args.configfile = configfile
+        args = parse_args()
+        configfile = args.configfile
 
     # I am deliberately using a dumb name here so I can 
     # find all the places that depend on the normal name.
-    configuration_lala = load_config_yaml(args.configfile)
+    configuration_lala = load_config_yaml(configfile)
 
-    config_logging(configuration_lala, args)
-
+    config_logging(configuration_lala, args, configfile)
 
     # These now populate an 'internal' section in the config. 
-    if args.small:
-        configuration_lala['internal']['limit_fetch'] = True
-    
-    if args.skip_api:
-        configuration_lala['internal']['skip_api'] = True
+    # They should only be applied if we parsed args. 
+    if args: 
+        if args.small:
+            configuration_lala['internal']['limit_fetch'] = True
+        
+        if args.skip_api:
+            configuration_lala['internal']['skip_api'] = True
 
-    if args.dump_dir:
-        configuration_lala['paths']['dump_dir'] = args.dump_dir
-        configuration_lala['internal']['dump'] = True
+        if args.dump_dir:
+            configuration_lala['paths']['dump_dir'] = args.dump_dir
+            configuration_lala['internal']['dump'] = True
 
-        # Check if folder exists. If not, create it. 
-        if os.path.exists(args.dump_dir) and \
-          not os.path.isdir(args.dump_dir):
-            logging.warning(
-              "Uh oh. {} exists but is not a dir. Not dumping.".format(
-                args.dump_dir))
-            configuration_lala['internal']['dump'] = False
-        elif not os.path.isdir(args.dump_dir):
-            logging.info("{} does not exist. Creating".format(
-              args.dump_dir))
-            os.makedirs(args.dump_dir)
-        else:
-            logging.debug("{} exists. Reusing!".format(
-              args.dump_dir))
+            # Check if folder exists. If not, create it. 
+            if os.path.exists(args.dump_dir) and \
+              not os.path.isdir(args.dump_dir):
+                logging.warning(
+                  "Uh oh. {} exists but is not a dir. Not dumping.".format(
+                    args.dump_dir))
+                configuration_lala['internal']['dump'] = False
+            elif not os.path.isdir(args.dump_dir):
+                logging.info("{} does not exist. Creating".format(
+                  args.dump_dir))
+                os.makedirs(args.dump_dir)
+            else:
+                logging.debug("{} exists. Reusing!".format(
+                  args.dump_dir))
 
 
     # For test harness
