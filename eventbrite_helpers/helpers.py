@@ -17,8 +17,6 @@ ICAL_TEMPLATE="ical_template_eventbrite.jinja2"
 # Order is important! More verbose is earlier.
 LOGLEVELS = ['debug', 'info', 'warning', 'error', 'critical', 'silent']
 
-# Save each step of the operation?
-DUMP=False
 
 # See:
 # https://stackoverflow.com/questions/730133/invalid-characters-in-xml
@@ -27,13 +25,9 @@ INVALID_XML_CHARS=re.compile(
   )
 INVALID_FILENAME_CHARS=re.compile(r'[/?]')
 
-LIMIT_FETCH = False
-SKIP_API = False
-
 # 406: not acceptable (you is blocked)
 # 429: past rate limit (ugh)
 EVENTBRITE_LIMIT_STATUSES = [406, 429,]
-
 
 _num_api_calls = 0
 
@@ -115,9 +109,8 @@ def event_is_virtual(event):
       event['location']['@type'] == "VirtualLocation"
 
 # -----------------------------
-def event_in_boundary(event):
-    """ Determine whether an event is in the range. Depends on 
-        global constant.
+def event_in_boundary(config, event):
+    """ Determine whether an event is in the range. 
         Does not handle weird GMT boundaries.
         Says that virtual events are false.
 
@@ -274,7 +267,12 @@ def get_duration_in_minutes(end_date, start_date):
     return diff // one_minute
 
 # ------------------------------
-def get_time_now():
+def get_time_now(config):
+    """ Get the timezone according to the config. It probably 
+        should just take the string and not the entire configuration
+        dict.
+        "America/Toronto"
+    """
    
     target_timezone = pytz.timezone(config['feeds']['timezone'])
     time_now = datetime.datetime.now(tz=target_timezone)
@@ -361,7 +359,7 @@ def get_ical_block(text, prefix=""):
 """ This calls the Eventbrite search API. May return an error 
     that we ought to handle, but don't.
 """
-def call_events_api():
+def call_events_api(config):
     global _num_api_calls
 
     BASE_URL = "https://www.eventbriteapi.com/v3"
@@ -381,7 +379,7 @@ def call_events_api():
           days=config['eventbrite']['query_events_changed_days']
           )
         # Make a query relative to now, minus the delta.
-        now = get_time_now()
+        now = get_time_now(config)
         cutoff = now - since
         
         query_args['date_modified.range_start'] = datetime_to_utc_string(cutoff)
@@ -423,7 +421,7 @@ def call_events_api():
           and r_json['pagination']['has_more_items'] :
             curr_page = curr_page + 1
 
-            if LIMIT_FETCH:
+            if config['internal'].get('limit_fetch'):
                 more_items = False
             else:
                 more_items = True
@@ -527,10 +525,11 @@ def call_api(api_url, api_params):
 
 
 # ------------------------------
-def get_event_from_api(id):
+def get_event_from_api(config, id):
     """ This calls the Eventbrite event API. May return an error 
         that we ought to handle, but don't.
 
+        config: The configuration dict
         id: The ID of the event to get
     """
 
@@ -583,7 +582,7 @@ def print_json(j):
 
 
 # ------------------------------
-def generate_ical(cal_dict, conf, feed_key):
+def generate_ical(conf, cal_dict, feed_key):
     """ Generate an iCal feed given a JSON file. The feed_key should
         be a feed defined in the config file. eg 'base_feed'
     """
@@ -591,7 +590,7 @@ def generate_ical(cal_dict, conf, feed_key):
     # --- Process template 
 
     template_loader = jinja2.FileSystemLoader(
-        searchpath=config['paths']['template_path']
+        searchpath=conf['paths']['template_path']
         )
     template_env = jinja2.Environment( 
         loader=template_loader,
@@ -604,7 +603,7 @@ def generate_ical(cal_dict, conf, feed_key):
     template_env.filters['ical_datetime_utc'] = get_ical_datetime_utc
     template_env.filters['ical_escape'] = ical_escape
 
-    time_now = get_time_now()
+    time_now = get_time_now(conf)
     time_now_formatted = time_now.strftime("%a, %d %b %Y %T %z")
 
     # Remove http:// or https:// from the website.
@@ -640,7 +639,7 @@ def generate_ical(cal_dict, conf, feed_key):
 
 
 # ------------------------------
-def generate_rss(cal_dict,  conf, feed_key):
+def generate_rss(conf, cal_dict, feed_key):
     """ Given a JSON formatted calendar dictionary, make and return 
         the RSS file. feed_key should be defined as a feed in the
         YAML.
@@ -649,7 +648,7 @@ def generate_rss(cal_dict,  conf, feed_key):
     # --- Process template 
 
     template_loader = jinja2.FileSystemLoader(
-        searchpath=config['paths']['template_path']
+        searchpath=conf['paths']['template_path']
         )
     template_env = jinja2.Environment( 
         loader=template_loader,
@@ -665,7 +664,7 @@ def generate_rss(cal_dict,  conf, feed_key):
     template_env.filters['minutes_since'] = get_duration_in_minutes
 
 
-    time_now = get_time_now()
+    time_now = get_time_now(conf)
     time_now_formatted = time_now.strftime("%a, %d %b %Y %T %z")
 
     # Copy and paste. What could go wrong?
@@ -837,6 +836,9 @@ def load_config_yaml(configfile=None):
     with open(configfile, encoding='utf-8') as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
 
+    if not config.get('internal'): 
+        config['internal'] = {}
+
     return config
 
 ## ------------------------------
@@ -889,28 +891,35 @@ def load_config(configfile=None):
 
        If both the commandline and the parameter are 
        specified then the commandline takes precedence.
+
+       Returns config dict
     """
 
     args = parse_args()
-    global config
-    config = load_config_yaml(args.configfile)
+    if configfile:
+        # This is still not going to work with pytest.
+        # The configfile is still a required parameter.
+        # TODO: Make this better, I guess? I think I want to not
+        #   specify a configfile as a parameter here.
+        args.configfile = configfile
 
-    config_logging(config, args)
+    # I am deliberately using a dumb name here so I can 
+    # find all the places that depend on the normal name.
+    configuration_lala = load_config_yaml(args.configfile)
 
+    config_logging(configuration_lala, args)
+
+
+    # These now populate an 'internal' section in the config. 
     if args.small:
-        # Ugh. Bad code smell. Should not use globals (but config.* is
-        # okay?)
-        global LIMIT_FETCH
-        LIMIT_FETCH = True
+        configuration_lala['internal']['limit_fetch'] = True
     
     if args.skip_api:
-        global SKIP_API
-        SKIP_API = True
+        configuration_lala['internal']['skip_api'] = True
 
     if args.dump_dir:
-        global DUMP
-        DUMP = True
-        config['paths']['dump_dir'] = args.dump_dir
+        configuration_lala['paths']['dump_dir'] = args.dump_dir
+        configuration_lala['internal']['dump'] = True
 
         # Check if folder exists. If not, create it. 
         if os.path.exists(args.dump_dir) and \
@@ -918,7 +927,7 @@ def load_config(configfile=None):
             logging.warning(
               "Uh oh. {} exists but is not a dir. Not dumping.".format(
                 args.dump_dir))
-            DUMP = False
+            configuration_lala['internal']['dump'] = False
         elif not os.path.isdir(args.dump_dir):
             logging.info("{} does not exist. Creating".format(
               args.dump_dir))
@@ -929,7 +938,8 @@ def load_config(configfile=None):
 
 
     # For test harness
-    return config
+    return configuration_lala
+
 # ------------------------------
 def sort_json_events(events):
     """ Given a list of Eventbrite events, sort them in 
@@ -969,7 +979,7 @@ def merge_and_prune(old_items, update_items):
         to Eventbrite ID. 
     """
 
-    too_old = get_time_now()
+    too_old = get_time_now(config)
 
 
     # Mein Gott. Are we back in OOT?
@@ -1085,7 +1095,7 @@ def extract_events(page):
 
     
 # -------
-def traverse_pages(target, json_so_far, page_limit):
+def traverse_pages(config, target, json_so_far, page_limit):
     """ Pull JSON from pages, to desired limit
 
     target : URL to fetch
@@ -1093,9 +1103,9 @@ def traverse_pages(target, json_so_far, page_limit):
     page_limit: maximum pages to consume (determined by us)
     """
 
-    if DUMP:
-        htmldir = ensure_dumpdir("html-pages")
-        jsondir = ensure_dumpdir("json-from-html")
+    if config['internal'].get('dump'):
+        htmldir = ensure_dumpdir(config, "html-pages")
+        jsondir = ensure_dumpdir(config, "json-from-html")
 
     curr_page = 2
     keep_going = True
@@ -1121,7 +1131,7 @@ def traverse_pages(target, json_so_far, page_limit):
         page = BeautifulSoup(r.text, 'html.parser')
         new_json = extract_events(page)
 
-        if DUMP:
+        if config['internal'].get('dump'):
             filename = url_to_filename(r.url)
             dump_file(r.text, htmldir, filename, "html")
             dump_file(new_json, jsondir, filename, "json")
@@ -1143,15 +1153,16 @@ def traverse_pages(target, json_so_far, page_limit):
     return json_so_far
 
 # ----------------------------
-def download_events():
+def download_events(config):
     """ Download events. Produces a list of JSON elements.
+        Consumes the configuration dict.
     """
 
     all_events = json.loads('[]')
 
-    if DUMP:
-        htmldir = ensure_dumpdir("html-pages")
-        jsondir = ensure_dumpdir("json-from-html")
+    if config['internal'].get('dump'):
+        htmldir = ensure_dumpdir(config, "html-pages")
+        jsondir = ensure_dumpdir(config, "json-from-html")
 
     for target in config['eventbrite']['target_urls']:
         r = requests.get(target)
@@ -1197,13 +1208,14 @@ def download_events():
             
         events = extract_events(page)
 
-        if DUMP:
+        if config['internal'].get('dump'):
             filename = url_to_filename(target)
             dump_file(r.text, htmldir, filename, "html")
             dump_file(events, jsondir, filename, "json")
 
-        if total_pages > 1 and not LIMIT_FETCH:
+        if total_pages > 1 and not config['internal'].get('limit_fetch'):
             events = traverse_pages(
+              config,
               target, 
               events, 
               min(total_pages, 
@@ -1219,15 +1231,16 @@ def download_events():
     return all_events
 
 # -----------------------------
-def incorporate_events(event_dict, new_events):
+def incorporate_events(config, event_dict, new_events):
     """ Incorporate new events into event_dict, if they are worthy.
 
+        config: the config dict
         event_dict: indexed by event ID
         new_events: raw downloaded events
     """
 
     timezone = pytz.timezone(config['feeds']['timezone'])
-    now = get_time_now()
+    now = get_time_now(config)
     recent = now - datetime.timedelta(days=1)
 
     for event in new_events:
@@ -1255,7 +1268,7 @@ def incorporate_events(event_dict, new_events):
 
         if event_is_virtual(event):
             virtual = True 
-        elif not event_in_boundary(event):
+        elif not event_in_boundary(config, event):
             too_far = True
 
 
@@ -1266,7 +1279,7 @@ def incorporate_events(event_dict, new_events):
             continue
 
         if not too_far:
-            api_event = get_event_from_api(id)
+            api_event = get_event_from_api(config, id)
 
             if api_event is None:
                 # Something went bad. Better bail 
@@ -1298,7 +1311,7 @@ def incorporate_events(event_dict, new_events):
         event_dict[id] = api_event
 
 # -------------------------
-def prepare_event_lists(event_dict):
+def prepare_event_lists(config, event_dict):
     """ Split event_dict into filtered and unfiltered lists of events.
 
         Returns a tuple:
@@ -1316,7 +1329,7 @@ def prepare_event_lists(event_dict):
     filtered_events = []
     virtual_events = []
 
-    too_old = get_time_now() - datetime.timedelta(days=1)
+    too_old = get_time_now(config) - datetime.timedelta(days=1)
     timezone = pytz.timezone(config['feeds']['timezone'])
 
 
@@ -1362,11 +1375,12 @@ def clean_event_dict(event_dict, ids_to_delete):
         del event_dict[id]
 
 # ------------------------------
-def ensure_dumpdir(subdir):
+def ensure_dumpdir(config, subdir):
     """ Make sure a subfolder of config['paths']['dump_dir'] exists 
         with name subdir. Return the full path of that folder.
 
-        Pre: DUMP is true, and config['paths']['dump_dir'] is defined.
+        Pre: config['internal']['dump'] is true, 
+        and config['paths']['dump_dir'] is defined.
     """
 
     fullpath = os.path.join(config['paths']['dump_dir'], subdir)
@@ -1381,7 +1395,8 @@ def dump_file(target, dumpdir, filename, file_ext):
     """ Dump a file of type file_ext to dumpdir/filename.file_ext .
         Any previously existing file will be overwritten!
     
-        Pre: DUMP is true, dumpdir exists and is writeable, 
+        Pre: config['internal']['dump'] is true, dumpdir exists 
+        and is writeable, 
         file_ext is one of "json", "txt", "html"
     """
 
@@ -1426,7 +1441,7 @@ def write_transformation(transforms):
         If I was a better programmer then I would force this.
     """
 
-    load_config() 
+    config = load_config() 
 
     logging.info("Starting run")
 
@@ -1440,7 +1455,7 @@ def write_transformation(transforms):
     # This is still sketchy, because we are still not testing for 
     # malicious input!
 
-    if DUMP:
+    if config['internal'].get('dump'):
         ddir = config['paths']['dump_dir']
 
     event_dict = {} 
@@ -1458,16 +1473,16 @@ def write_transformation(transforms):
         with open(event_cache_file, "r", encoding='utf8') as injson:
             event_dict = json.load(injson)
 
-        if DUMP:
+        if config['internal'].get('dump'):
             dump_file(event_dict, ddir, "00-orig-events", 
               "json")
 
-    if not SKIP_API: # Yay double negative
-        raw_events = download_events()
+    if not config['internal'].get('skip_api'): # Yay double negative
+        raw_events = download_events(config)
 
-        incorporate_events(event_dict, raw_events)
+        incorporate_events(config, event_dict, raw_events)
 
-        if DUMP:
+        if config['internal'].get('dump'):
             dump_file(raw_events, ddir, "05-raw-events", "json")
             dump_file(event_dict, ddir, "10-merged-events", "json")
 
@@ -1475,10 +1490,10 @@ def write_transformation(transforms):
 
 
     nice_json, filtered_json, virtual_json, old_ids \
-      = prepare_event_lists(event_dict)
+      = prepare_event_lists(config, event_dict)
     clean_event_dict(event_dict, old_ids)
 
-    if DUMP:
+    if config['internal'].get('dump'):
         dump_file(nice_json, ddir, "15-nice-events", "json")
         dump_file(filtered_json, ddir, "20-filtered-events", "json")
         dump_file(virtual_json, ddir, "25-virtual-events", "json")
@@ -1494,24 +1509,24 @@ def write_transformation(transforms):
         if transform_type == "rss":
             destpairs.append({
               'generated_file': generate_rss(
-                nice_json,
                 config,
+                nice_json,
                 'base_feed',
                 ),
               'dest': get_feed_filename(config, 'base_feed', 'rss')
               })
             destpairs.append({
               'generated_file': generate_rss(
-                filtered_json,
                 config,
+                filtered_json,
                 'filtered_feed',
                 ),
               'dest': get_feed_filename(config, 'filtered_feed', 'rss')
               })
             destpairs.append({
               'generated_file': generate_rss(
-                virtual_json,
                 config,
+                virtual_json,
                 'virtual_feed',
                 ),
               'dest': get_feed_filename(config, 'virtual_feed', 'rss')
@@ -1520,24 +1535,24 @@ def write_transformation(transforms):
         elif transform_type == "ical":
             destpairs.append({
               'generated_file': generate_ical(
-                nice_json,
                 config,
+                nice_json,
                 'base_feed',
                 ),
               'dest': get_feed_filename(config, 'base_feed', 'ics')
               })
             destpairs.append({
               'generated_file': generate_ical(
-                filtered_json,
                 config,
+                filtered_json,
                 'filtered_feed',
                 ),
               'dest': get_feed_filename(config, 'filtered_feed', 'ics')
               })
             destpairs.append({
               'generated_file': generate_ical(
-                virtual_json,
                 config,
+                virtual_json,
                 'virtual_feed',
                 ),
               'dest': get_feed_filename(config, 'virtual_feed', 'ics')
