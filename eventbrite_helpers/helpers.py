@@ -14,6 +14,10 @@ from bs4 import BeautifulSoup
 RSS_TEMPLATE="rss_template_eventbrite.jinja2"
 ICAL_TEMPLATE="ical_template_eventbrite.jinja2"
 
+# I can't remember which Stack Exchange post I stole this from
+# But it seems to work
+TEMPLATE_FOLDER=os.path.abspath(os.path.dirname(__file__))
+
 # Order is important! More verbose is earlier.
 LOGLEVELS = ['debug', 'info', 'warning', 'error', 'critical', 'silent']
 
@@ -421,7 +425,7 @@ def call_events_api(config):
           and r_json['pagination']['has_more_items'] :
             curr_page = curr_page + 1
 
-            if config['internal'].get('limit_fetch'):
+            if config['flags'].get('limit_fetch'):
                 more_items = False
             else:
                 more_items = True
@@ -825,6 +829,33 @@ def config_logging(config, args, configfile):
 
 
 ## ------------------------------
+def config_dump(config):
+   """ Set up dump folder if configured.
+       pre: config['flags']['dump'] is true.
+   """
+
+   if not config['paths'].get('dump_path'):
+       logging.warning("config_dump: No dump path set! Not dumping")
+       config['flags']['dump'] = False
+       return
+
+   # Check if folder exists. If not, create it. 
+   if os.path.exists(config['paths']['dump_path']) and \
+     not os.path.isdir(config['paths']['dump_path']):
+       logging.warning(
+         "Uh oh. {} exists but is not a dir. Not dumping.".format(
+           config['paths']['dump_path']))
+       config['flags']['dump'] = False
+   elif not os.path.isdir(config['paths']['dump_path']):
+       logging.info("{} does not exist. Creating".format(
+         config['paths']['dump_path']))
+       os.makedirs(config['paths']['dump_path'])
+   else:
+       logging.debug("{} exists. Reusing!".format(
+         config['paths']['dump_path'])) 
+
+
+## ------------------------------
 def load_config_yaml(configfile=None):
     """ Load config definitions from YAML file.
 
@@ -836,8 +867,8 @@ def load_config_yaml(configfile=None):
     with open(configfile, encoding='utf-8') as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
 
-    if not config.get('internal'): 
-        config['internal'] = {}
+    if not config.get('flags'): 
+        config['flags'] = {}
 
     return config
 
@@ -910,34 +941,21 @@ def load_config(configfile=None):
 
     config_logging(configuration_lala, args, configfile)
 
-    # These now populate an 'internal' section in the config. 
+    # These now populate an 'flags' section in the config. 
     # They should only be applied if we parsed args. 
     if args: 
         if args.small:
-            configuration_lala['internal']['limit_fetch'] = True
+            configuration_lala['flags']['limit_fetch'] = True
         
         if args.skip_api:
-            configuration_lala['internal']['skip_api'] = True
+            configuration_lala['flags']['skip_api'] = True
 
         if args.dump_dir:
-            configuration_lala['paths']['dump_dir'] = args.dump_dir
-            configuration_lala['internal']['dump'] = True
+            configuration_lala['paths']['dump_path'] = args.dump_dir
+            configuration_lala['flags']['dump'] = True
 
-            # Check if folder exists. If not, create it. 
-            if os.path.exists(args.dump_dir) and \
-              not os.path.isdir(args.dump_dir):
-                logging.warning(
-                  "Uh oh. {} exists but is not a dir. Not dumping.".format(
-                    args.dump_dir))
-                configuration_lala['internal']['dump'] = False
-            elif not os.path.isdir(args.dump_dir):
-                logging.info("{} does not exist. Creating".format(
-                  args.dump_dir))
-                os.makedirs(args.dump_dir)
-            else:
-                logging.debug("{} exists. Reusing!".format(
-                  args.dump_dir))
-
+    if configuration_lala['flags'].get('dump'):
+        config_dump(configuration_lala)
 
     # For test harness
     return configuration_lala
@@ -1105,7 +1123,7 @@ def traverse_pages(config, target, json_so_far, page_limit):
     page_limit: maximum pages to consume (determined by us)
     """
 
-    if config['internal'].get('dump'):
+    if config['flags'].get('dump'):
         htmldir = ensure_dumpdir(config, "html-pages")
         jsondir = ensure_dumpdir(config, "json-from-html")
 
@@ -1133,7 +1151,7 @@ def traverse_pages(config, target, json_so_far, page_limit):
         page = BeautifulSoup(r.text, 'html.parser')
         new_json = extract_events(page)
 
-        if config['internal'].get('dump'):
+        if config['flags'].get('dump'):
             filename = url_to_filename(r.url)
             dump_file(r.text, htmldir, filename, "html")
             dump_file(new_json, jsondir, filename, "json")
@@ -1162,7 +1180,7 @@ def download_events(config):
 
     all_events = json.loads('[]')
 
-    if config['internal'].get('dump'):
+    if config['flags'].get('dump'):
         htmldir = ensure_dumpdir(config, "html-pages")
         jsondir = ensure_dumpdir(config, "json-from-html")
 
@@ -1210,12 +1228,12 @@ def download_events(config):
             
         events = extract_events(page)
 
-        if config['internal'].get('dump'):
+        if config['flags'].get('dump'):
             filename = url_to_filename(target)
             dump_file(r.text, htmldir, filename, "html")
             dump_file(events, jsondir, filename, "json")
 
-        if total_pages > 1 and not config['internal'].get('limit_fetch'):
+        if total_pages > 1 and not config['flags'].get('limit_fetch'):
             events = traverse_pages(
               config,
               target, 
@@ -1378,14 +1396,14 @@ def clean_event_dict(event_dict, ids_to_delete):
 
 # ------------------------------
 def ensure_dumpdir(config, subdir):
-    """ Make sure a subfolder of config['paths']['dump_dir'] exists 
+    """ Make sure a subfolder of config['paths']['dump_path'] exists 
         with name subdir. Return the full path of that folder.
 
-        Pre: config['internal']['dump'] is true, 
-        and config['paths']['dump_dir'] is defined.
+        Pre: config['flags']['dump'] is true, 
+        and config['paths']['dump_path'] is defined.
     """
 
-    fullpath = os.path.join(config['paths']['dump_dir'], subdir)
+    fullpath = os.path.join(config['paths']['dump_path'], subdir)
 
     if not os.path.isdir(fullpath):
         os.makedirs(fullpath)
@@ -1397,7 +1415,7 @@ def dump_file(target, dumpdir, filename, file_ext):
     """ Dump a file of type file_ext to dumpdir/filename.file_ext .
         Any previously existing file will be overwritten!
     
-        Pre: config['internal']['dump'] is true, dumpdir exists 
+        Pre: config['flags']['dump'] is true, dumpdir exists 
         and is writeable, 
         file_ext is one of "json", "txt", "html"
     """
@@ -1436,6 +1454,16 @@ def get_feed_filename(conf, feed_key, suffix):
     return feed_file
 
 
+# -----------------------------
+def whereami():
+    """ Try to figure out where I am being called from.
+    """
+
+    logging.info("I think I am here: {}".format(
+      os.path.abspath(os.path.dirname(__file__))
+      ))
+
+
 # ------------------------------
 def write_transformation(transforms):
     """ Write file(s) for the transformation. The transforms should
@@ -1446,6 +1474,7 @@ def write_transformation(transforms):
     config = load_config() 
 
     logging.info("Starting run")
+    whereami()
 
     # There is a type error now.
     # old_json should be the dictionary of events.
@@ -1457,8 +1486,8 @@ def write_transformation(transforms):
     # This is still sketchy, because we are still not testing for 
     # malicious input!
 
-    if config['internal'].get('dump'):
-        ddir = config['paths']['dump_dir']
+    if config['flags'].get('dump'):
+        ddir = config['paths']['dump_path']
 
     event_dict = {} 
 
@@ -1475,16 +1504,16 @@ def write_transformation(transforms):
         with open(event_cache_file, "r", encoding='utf8') as injson:
             event_dict = json.load(injson)
 
-        if config['internal'].get('dump'):
+        if config['flags'].get('dump'):
             dump_file(event_dict, ddir, "00-orig-events", 
               "json")
 
-    if not config['internal'].get('skip_api'): # Yay double negative
+    if not config['flags'].get('skip_api'): # Yay double negative
         raw_events = download_events(config)
 
         incorporate_events(config, event_dict, raw_events)
 
-        if config['internal'].get('dump'):
+        if config['flags'].get('dump'):
             dump_file(raw_events, ddir, "05-raw-events", "json")
             dump_file(event_dict, ddir, "10-merged-events", "json")
 
@@ -1495,7 +1524,7 @@ def write_transformation(transforms):
       = prepare_event_lists(config, event_dict)
     clean_event_dict(event_dict, old_ids)
 
-    if config['internal'].get('dump'):
+    if config['flags'].get('dump'):
         dump_file(nice_json, ddir, "15-nice-events", "json")
         dump_file(filtered_json, ddir, "20-filtered-events", "json")
         dump_file(virtual_json, ddir, "25-virtual-events", "json")

@@ -7,6 +7,7 @@ paths:
   cache_path: /tmp/eventbrite_helpers/cache
   publish_path: /tmp/eventbrite_helpers/rss
   log_path: /tmp/eventbrite_helpers/logs
+  dump_path: /tmp/dump # Usually overwritten in args
 
   # This should not exist! 
   src_path: /usr/local/src/eventbrite_helpers
@@ -131,4 +132,10 @@ logging:
   num_logfiles_to_keep: 5
 
 
+# You probably do not want to set these in the YAML, but you do you.
+# They correspond to commandline args.
+flags:
+  limit_fetch: false # --small parameter
+  skip_api: false    # --skip-api
+  dump: false        # true if --dump-dir is set
 
