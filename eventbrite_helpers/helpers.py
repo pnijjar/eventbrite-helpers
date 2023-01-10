@@ -594,7 +594,7 @@ def generate_ical(conf, cal_dict, feed_key):
     # --- Process template 
 
     template_loader = jinja2.FileSystemLoader(
-        searchpath=conf['paths']['template_path']
+        searchpath=TEMPLATE_FOLDER
         )
     template_env = jinja2.Environment( 
         loader=template_loader,
@@ -652,7 +652,7 @@ def generate_rss(conf, cal_dict, feed_key):
     # --- Process template 
 
     template_loader = jinja2.FileSystemLoader(
-        searchpath=conf['paths']['template_path']
+        searchpath=TEMPLATE_FOLDER
         )
     template_env = jinja2.Environment( 
         loader=template_loader,

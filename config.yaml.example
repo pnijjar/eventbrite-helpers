@@ -9,10 +9,6 @@ paths:
   log_path: /tmp/eventbrite_helpers/logs
   dump_path: /tmp/dump # Usually overwritten in args
 
-  # This should not exist! 
-  src_path: /usr/local/src/eventbrite_helpers
-  template_path: /usr/local/src/eventbrite_helpers/eventbrite_helpers
-
   # Where to keep cached json
   # This replaces OUT_EVENT_DICT
   cache_file: 
