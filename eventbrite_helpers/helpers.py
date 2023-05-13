@@ -1087,32 +1087,24 @@ def extract_events(page):
     event_script = page.find_all(type="application/ld+json")
 
     num_candidates = len(event_script)
-    if num_candidates != 1:
-        logging.debug( "Uh oh. Looked for JSON and"
-          " found {} possible elements.".format(num_candidates))
 
-    best_candidate = None
+    candidate_list = []
 
     for candidate in event_script:
         can_json = json.loads(candidate.string)
 
-        # Events must be in a list
-        if isinstance(can_json, list) and \
-          len(can_json) >= 1 and \
-          '@type' in can_json[0] and \
-          can_json[0]['@type'] == 'Event':
-            
-            if best_candidate:
-                logging.warn("Uh oh. There is already a candidate!"
-                  "Taking latest one, I guess.")
+        # Events MIGHT be in a list, or MIGHT not. Sigh.
+        if isinstance(can_json, list):
+            for possibility in can_json:
+                if '@type' in possibility and \
+                  possibility['@type'] == 'Event':
+                    candidate_list.append(possibility)
+        elif '@type' in can_json and can_json['@type'] == 'Event':
+            candidate_list.append(can_json)
 
-            best_candidate = can_json
-          
-    if not best_candidate:
-        return []
-    else: 
-        return best_candidate            
-
+    logging.debug("Found {} candidates".format(len(candidate_list)))
+    return candidate_list    
+        
     
 # -------
 def traverse_pages(config, target, json_so_far, page_limit):
