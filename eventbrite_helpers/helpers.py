@@ -1098,8 +1098,31 @@ def extract_events(page):
     for candidate in event_script:
         can_json = json.loads(candidate.string)
 
+        # Sigh. The format looks different now.
+
+		#{'@context': 'https://schema.org',
+		# '@type': 'ItemList',
+		# 'itemListElement': [{'@type': 'ListItem',
+		#                      'item': {'@type': 'Event',
+		#                               'description': "At LiftOff Launchers we'll be "
+		#                                              'Connecting the Waterloo Region '
+        #                               ... }}]}
+
+        if '@type' in can_json and \
+          can_json['@type'] == 'ItemList' and \
+          'itemListElement' in can_json and \
+          isinstance(can_json['itemListElement'], list):
+
+            can_list = can_json['itemListElement']
+
+            for possibility in can_list:
+                if 'item' in possibility and \
+                  '@type' in possibility['item'] and \
+                  possibility['item']['@type'] == 'Event':
+                      candidate_list.append(possibility['item'])
+
         # Events MIGHT be in a list, or MIGHT not. Sigh.
-        if isinstance(can_json, list):
+        elif isinstance(can_json, list):
             for possibility in can_json:
                 if '@type' in possibility and \
                   possibility['@type'] == 'Event':
