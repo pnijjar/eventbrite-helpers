@@ -920,13 +920,18 @@ def parse_args():
 def load_config(configfile=None):
     """ Load configuration definitions.
 
-       If both the commandline and the parameter are 
-       specified then the commandline takes precedence.
+       If configdict exists then it is used as the configuration, 
+       WITHOUT ERROR CHECKING.
+
+       If configfile is defined then parameters will NOT be read!
+       (This is different behaviour than before.)
+       You would only use the configfile if you were testing.
 
        Returns config dict
     """
 
     args = None
+
     if not configfile:
         # This is still not going to work with pytest.
         # The configfile is still a required parameter.
