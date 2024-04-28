@@ -1179,14 +1179,21 @@ def traverse_pages(config, target, json_so_far, page_limit):
         if new_json: 
             json_so_far = json_so_far + new_json
 
-        curr_page = curr_page + 1
 
         #if not page.find('button', { 'data-spec': 'page-next' }):
         #    keep_going = False
 
+        if not page.find('a', { 'class': 'event-card-link' }):
+            keep_going = False
+            logging.info("Found no event-card-link elements on page {}. "
+              "Assuming no more results.".format(curr_page))
+
+
         if page.find('section', {'class': 'search-result-pivots__empty-state'}):
             keep_going = False
-            logging.info("Found empty search result on page {}".format(curr_page - 1))
+            logging.info("Found empty search result on page {}".format(curr_page))
+
+        curr_page = curr_page + 1
 
     logging.info("Traversed {} pages".format(curr_page - 1))
     
@@ -1217,16 +1224,49 @@ def download_events(config):
         # Update 2022-08-30: on 2022-07-27 Eventbrite changed 
         # something, and this div disappeared from the interface.
 
+        # Update 2024-04-27: On 2024-04-24 Eventbrite changed something 
+        # else around pagination. They now say there are 500 pages total.
+        # We never get a 404 when running out of events any more.
+
         total_pages = 1
         try:
             total_pages_div = page.find( 
               'div', 
               {'data-spec': 'paginator__last-page-link'}
               )
-            if total_pages_div:
+            total_pages_v02 = page.find(
+              'li',
+              {'data-spec': 'pagination-parent'}
+            )
+            if total_pages_v02:
+                # Format is <li ... data-spec: 'pagination-parent' 
+                #   <span> ... </span> of XXX</li>
+                total_pages_raw = total_pages_v02.contents
+                total_pages_attempt = re.match(r'^.*of (\d+).*', total_pages_raw)
+
+                if total_pages_attempt:
+                    total_pages = total_pages_attempt[1]
+                    logging.info(
+                      "{}: I think there are {} pages in total, from"
+                      " pagination-parent".format(
+                        target,
+                        total_pages,
+                        ))
+                else:
+                    logging.info(
+                      "{}: Uh oh. Found pagination-parent but no page count."
+                      " Setting to {}".format(
+                        target,
+                        config['eventbrite']['max_pages_to_fetch'],
+                        ))
+                    total_pages = config['eventbrite']['max_pages_to_fetch']
+
+
+            elif total_pages_div:
                 total_pages = int(total_pages_div.a.contents[0])
                 logging.info(
-                  "{}: I think there are {} pages in total".format(
+                  "{}: I think there are {} pages in total"
+                  ", from paginator__last-page-link".format(
                     target,
                     total_pages,
                     ))
