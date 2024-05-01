@@ -1149,6 +1149,8 @@ def traverse_pages(config, target, json_so_far, page_limit):
 
     curr_page = 2
     keep_going = True
+    last_json = json_so_far
+    new_json = None
     while (curr_page <= page_limit) \
       and keep_going:
         
@@ -1176,22 +1178,32 @@ def traverse_pages(config, target, json_so_far, page_limit):
             dump_file(r.text, htmldir, filename, "html")
             dump_file(new_json, jsondir, filename, "json")
 
-        if new_json: 
-            json_so_far = json_so_far + new_json
-
 
         #if not page.find('button', { 'data-spec': 'page-next' }):
         #    keep_going = False
 
-        if not page.find('a', { 'class': 'event-card-link' }):
-            keep_going = False
-            logging.info("Found no event-card-link elements on page {}. "
-              "Assuming no more results.".format(curr_page))
+        # This does not render without JS
+        #if not page.find('a', { 'class': 'event-card-link' }):
+        #    keep_going = False
+        #    logging.info("Found no event-card-link elements on page {}. "
+        #      "Assuming no more results.".format(curr_page))
 
+        # Always generated in HTML now?
+        #if page.find('section', {'class': 'search-result-pivots__empty-state'}):
+        #    keep_going = False
+        #    logging.info("Found empty search result on page {}".format(curr_page))
 
-        if page.find('section', {'class': 'search-result-pivots__empty-state'}):
+        if new_json and new_json == last_json:
             keep_going = False
-            logging.info("Found empty search result on page {}".format(curr_page))
+            logging.info("Found duplicate set of events."
+              "Assuming we are done. {}".format(
+                curr_page
+                ))
+
+        if new_json: 
+            last_json = new_json
+            json_so_far = json_so_far + new_json
+
 
         curr_page = curr_page + 1
 
@@ -1227,8 +1239,11 @@ def download_events(config):
         # Update 2024-04-27: On 2024-04-24 Eventbrite changed something 
         # else around pagination. They now say there are 500 pages total.
         # We never get a 404 when running out of events any more.
+        #
+        # Worse this does not get generated until some JS runs, I think.
 
-        total_pages = 1
+
+        total_pages = 2
         try:
             total_pages_div = page.find( 
               'div', 
@@ -1238,10 +1253,15 @@ def download_events(config):
               'li',
               {'data-spec': 'pagination-parent'}
             )
+            logging.debug("total_pages_div: {} "
+              "total_pages_v02: {}".format(
+                total_pages_div,
+                total_pages_v02,
+                ))
             if total_pages_v02:
                 # Format is <li ... data-spec: 'pagination-parent' 
                 #   <span> ... </span> of XXX</li>
-                total_pages_raw = total_pages_v02.contents
+                total_pages_raw = total_pages_v02.text
                 total_pages_attempt = re.match(r'^.*of (\d+).*', total_pages_raw)
 
                 if total_pages_attempt:
@@ -1271,11 +1291,13 @@ def download_events(config):
                     total_pages,
                     ))
             else:
-                logging.debug("{}: Only one page found".format(target))
-                total_pages = 1
+                logging.info("{} : only one page found".format(
+                  target,
+                  ))
+                total_pages = 2
         except Exception as e:
             logging.debug("No paginator found on {}".format( target))
-            total_pages = 1
+            total_pages = 2
 
         #attempt_traverse = False
 
