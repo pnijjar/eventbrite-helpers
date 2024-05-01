@@ -21,6 +21,8 @@ TEMPLATE_FOLDER=os.path.abspath(os.path.dirname(__file__))
 # Order is important! More verbose is earlier.
 LOGLEVELS = ['debug', 'info', 'warning', 'error', 'critical', 'silent']
 
+# Used to find JSON blob in a Javascript block. Maybe fragile?
+SERVER_DATA_REGEXP = re.compile(r'window.__SERVER_DATA__ = (.+});')
 
 # See:
 # https://stackoverflow.com/questions/730133/invalid-characters-in-xml
@@ -1242,6 +1244,45 @@ def download_events(config):
         #
         # Worse this does not get generated until some JS runs, I think.
 
+        # Update 2024-05-01: There is a 'window.__SERVER_DATA__' entry
+        # that contains both the pagination (if it exists) and the
+        # type of the page (discovery, organization, etc). If we can 
+        # get this information we can stop guessing.
+
+        total_pages = 1
+
+        all_js = page.find_all('script', type="text/javascript",
+          recursive=True)
+
+        logging.debug("How many JS? {}".format(len(all_js)))
+
+        for script in all_js:
+            if script.string and 'window.__SERVER_DATA__' in script.string:
+                content = str(script.string)
+                raw_string = re.search(SERVER_DATA_REGEXP, content)
+
+                data = json.loads(raw_string[1])
+
+                if 'app_name' in data:
+                    logging.debug("{}: app_name is {}".format(
+                      target,
+                      data['app_name'],
+                      ))
+                else:
+                    logging.debug("{}: Uh oh! No app_name found!".format(
+                      target,
+                      ))
+                 
+                if 'page_count' in data:
+                    logging.debug("{}: Page count is {}".format(
+                      target,
+                      data['page_count'],
+                      ))
+                else:
+                    logging.debug("{}: No page count found."
+                      " Assuming 1.".format(target))
+
+                break
 
         total_pages = 2
         try:
