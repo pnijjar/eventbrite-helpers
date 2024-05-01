@@ -22,6 +22,7 @@ TEMPLATE_FOLDER=os.path.abspath(os.path.dirname(__file__))
 LOGLEVELS = ['debug', 'info', 'warning', 'error', 'critical', 'silent']
 
 # Used to find JSON blob in a Javascript block. Maybe fragile?
+# Also this string appears elsewhere, so it violates DRY
 SERVER_DATA_REGEXP = re.compile(r'window.__SERVER_DATA__ = (.+});')
 
 # See:
@@ -1149,7 +1150,7 @@ def traverse_pages(config, target, json_so_far, page_limit):
         htmldir = ensure_dumpdir(config, "html-pages")
         jsondir = ensure_dumpdir(config, "json-from-html")
 
-    curr_page = 2
+    curr_page = 1
     keep_going = True
     last_json = json_so_far
     new_json = None
@@ -1157,7 +1158,11 @@ def traverse_pages(config, target, json_so_far, page_limit):
       and keep_going:
         
 
-        payload = {'page': curr_page}
+        if curr_page == 1:
+            payload = {}
+        else:
+            payload = {'page': curr_page}
+
         r = requests.get(target, params=payload)
 
         try:
@@ -1180,20 +1185,6 @@ def traverse_pages(config, target, json_so_far, page_limit):
             dump_file(r.text, htmldir, filename, "html")
             dump_file(new_json, jsondir, filename, "json")
 
-
-        #if not page.find('button', { 'data-spec': 'page-next' }):
-        #    keep_going = False
-
-        # This does not render without JS
-        #if not page.find('a', { 'class': 'event-card-link' }):
-        #    keep_going = False
-        #    logging.info("Found no event-card-link elements on page {}. "
-        #      "Assuming no more results.".format(curr_page))
-
-        # Always generated in HTML now?
-        #if page.find('section', {'class': 'search-result-pivots__empty-state'}):
-        #    keep_going = False
-        #    logging.info("Found empty search result on page {}".format(curr_page))
 
         if new_json and new_json == last_json:
             keep_going = False
@@ -1250,6 +1241,7 @@ def download_events(config):
         # get this information we can stop guessing.
 
         total_pages = 1
+        found_total_pages = False
 
         all_js = page.find_all('script', type="text/javascript",
           recursive=True)
@@ -1278,92 +1270,25 @@ def download_events(config):
                       target,
                       data['page_count'],
                       ))
-                else:
-                    logging.debug("{}: No page count found."
-                      " Assuming 1.".format(target))
+                    total_pages = data['page_count']
+                    found_total_pages = True
 
                 break
 
-        total_pages = 2
-        try:
-            total_pages_div = page.find( 
-              'div', 
-              {'data-spec': 'paginator__last-page-link'}
-              )
-            total_pages_v02 = page.find(
-              'li',
-              {'data-spec': 'pagination-parent'}
-            )
-            logging.debug("total_pages_div: {} "
-              "total_pages_v02: {}".format(
-                total_pages_div,
-                total_pages_v02,
+        if not found_total_pages: 
+            logging.debug("{}: did not find pagination."
+              " Assuming {}".format(
+                target,
+                total_pages,
                 ))
-            if total_pages_v02:
-                # Format is <li ... data-spec: 'pagination-parent' 
-                #   <span> ... </span> of XXX</li>
-                total_pages_raw = total_pages_v02.text
-                total_pages_attempt = re.match(r'^.*of (\d+).*', total_pages_raw)
 
-                if total_pages_attempt:
-                    total_pages = total_pages_attempt[1]
-                    logging.info(
-                      "{}: I think there are {} pages in total, from"
-                      " pagination-parent".format(
-                        target,
-                        total_pages,
-                        ))
-                else:
-                    logging.info(
-                      "{}: Uh oh. Found pagination-parent but no page count."
-                      " Setting to {}".format(
-                        target,
-                        config['eventbrite']['max_pages_to_fetch'],
-                        ))
-                    total_pages = config['eventbrite']['max_pages_to_fetch']
-
-
-            elif total_pages_div:
-                total_pages = int(total_pages_div.a.contents[0])
-                logging.info(
-                  "{}: I think there are {} pages in total"
-                  ", from paginator__last-page-link".format(
-                    target,
-                    total_pages,
-                    ))
-            else:
-                logging.info("{} : only one page found".format(
-                  target,
-                  ))
-                total_pages = 2
-        except Exception as e:
-            logging.debug("No paginator found on {}".format( target))
-            total_pages = 2
-
-        #attempt_traverse = False
-
-        #if page.find('button', { 'data-spec': 'page-next' }):
-
-        #if not page.find('section', {'class': 'search-result-pivots__empty-state'}):
-        #    attempt_traverse = True
-        #else:
-        #    logging.info("Only one page found on {}".format(target))
-            
-        events = extract_events(page)
-
-        if config['flags'].get('dump'):
-            filename = url_to_filename(target)
-            dump_file(r.text, htmldir, filename, "html")
-            dump_file(events, jsondir, filename, "json")
-
-        if total_pages > 1 and not config['flags'].get('limit_fetch'):
-            events = traverse_pages(
-              config,
-              target, 
-              events, 
-              min(total_pages, 
-              config['eventbrite']['max_pages_to_fetch'],
-              ))
+        events = traverse_pages(
+          config,
+          target, 
+          [], 
+          min(total_pages, 
+          config['eventbrite']['max_pages_to_fetch'],
+          ))
         logging.info("{}: Got {} items!".format(
           target,
           len(events))
