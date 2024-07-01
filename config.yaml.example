@@ -42,6 +42,17 @@ eventbrite:
   # calls, and this is per URL, not overall (sorry).
   max_pages_to_fetch: 10
 
+  # If you make too many HTTP requests too quickly then Eventbrite 
+  # sends 429 "too many request" errors.
+  # Use an exponential backoff strategy to try and get all the URLs.
+  # These numbers are in minutes. The initial is the starting backoff.
+  # Stop trying when we exceed (not equal) the upper limit.
+  # This is for web scraping, not API calls (which have other limits)
+  backoff_initial: 2
+  backoff_limit: 33
+
+
+
   # Include only events changed since this time delta
   # Set to -1 if you want everything
   query_events_changed_days: 14

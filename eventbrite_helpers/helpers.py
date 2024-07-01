@@ -9,6 +9,7 @@ import re
 import logging, logging.handlers
 import pprint
 import yaml
+import time
 from bs4 import BeautifulSoup
 
 RSS_TEMPLATE="rss_template_eventbrite.jinja2"
@@ -37,6 +38,9 @@ INVALID_FILENAME_CHARS=re.compile(r'[/?]')
 EVENTBRITE_LIMIT_STATUSES = [406, 429,]
 
 _num_api_calls = 0
+
+# This is a bad default but whatevs. Fix in config.
+_current_backoff = 1
 
 # ---- EXCEPTIONS -----
 class NoEventbriteIDException(Exception):
@@ -873,6 +877,10 @@ def load_config_yaml(configfile=None):
     if not config.get('flags'): 
         config['flags'] = {}
 
+    # Set backoff
+    global _current_backoff
+    _current_backoff = config['eventbrite']['backoff_initial']
+
     return config
 
 ## ------------------------------
@@ -1146,6 +1154,8 @@ def traverse_pages(config, target, json_so_far, page_limit):
     page_limit: maximum pages to consume (determined by us)
     """
 
+    global _current_backoff
+
     if config['flags'].get('dump'):
         htmldir = ensure_dumpdir(config, "html-pages")
         jsondir = ensure_dumpdir(config, "json-from-html")
@@ -1167,11 +1177,42 @@ def traverse_pages(config, target, json_so_far, page_limit):
 
         try:
             r.raise_for_status()
-            logging.debug("Fetched page {}: {}".format(curr_page, r.url))
+            if curr_page != 1:
+                logging.info("Fetched page {}: {}".format(
+                  curr_page, 
+                  r.url,
+                  ))
         except requests.exceptions.HTTPError as e:
-            logging.warn("Oy. Received status {} for"
+
+            # No, probably should not be all statuses. Just 429.
+            if r.status_code == 429:
+                logging.warn("Received {} from Eventbrite: {}.".format(
+                  r.status_code,
+                  e,
+                  ))
+                if _current_backoff > config['eventbrite']['backoff_limit']:
+                    logging.warn("Backoff value {} is over "
+                      "limit {}. Giving up.".format(
+                        _current_backoff,
+                        config['eventbrite']['backoff_limit'],
+                        ))
+                    return json_so_far
+                else:
+                    logging.info("Sleeping for {} minutes. Zzzz".format(
+                      _current_backoff,
+                      ))
+                    time.sleep(60 * _current_backoff)
+                    logging.info("Waking up!")
+                    _current_backoff = _current_backoff * 2
+
+                    # Now try again to get the same page.
+                    continue
+
+
+            logging.warn("Oy. Received status {}, error '{}' for"
               "url {} on page {}.  Bailing".format(
-                r.status,
+                r.status_code,
+                e,
                 r.url,
                 curr_page,
                 )) 
