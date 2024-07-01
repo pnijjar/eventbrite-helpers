@@ -1556,6 +1556,8 @@ def write_transformation(transforms):
             dump_file(event_dict, ddir, "00-orig-events", 
               "json")
 
+    logging.debug("Just before calling API")
+
     if not config['flags'].get('skip_api'): # Yay double negative
         raw_events = download_events(config)
 
