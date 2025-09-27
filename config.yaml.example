@@ -18,6 +18,7 @@ paths:
 
 eventbrite:
   # An anonymous access token is fine
+  # This is the "Oauth private token"
   api_token: "YOURTOKENHERE"
 
   # In what geographic rectangle must events be to count as "local"?
