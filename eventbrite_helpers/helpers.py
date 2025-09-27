@@ -1259,7 +1259,14 @@ def download_events(config):
 
     for target in config['eventbrite']['target_urls']:
         r = requests.get(target)
-        r.raise_for_status()
+        try:
+            r.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            logging.error("download_events: Received HTTP error: {} . "
+              "Skipping.".format(
+              e, 
+              ))
+            continue
 
         # Get the JSON I want
         page = BeautifulSoup(r.text, 'html.parser')
