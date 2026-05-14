@@ -115,9 +115,18 @@ def url_to_filename(url):
 def event_is_virtual(event):
     """ Determine if event is virtual. Produces a boolean."""
 
-    return 'location' in event and \
+    is_virtual = False
+
+    if 'location' in event and \
       '@type' in event['location'] and \
-      event['location']['@type'] == "VirtualLocation"
+      event['location']['@type'] == "VirtualLocation":
+        is_virtual = True
+    elif 'is_online_event' in event and \
+      event['is_online_event']:
+        is_virtual = True
+
+    return is_virtual
+    
 
 # -----------------------------
 def event_in_boundary(config, event):
@@ -132,30 +141,35 @@ def event_in_boundary(config, event):
     """
 
     id = url_to_id(event['url'])
+    conf_geo = config['eventbrite']['geo_boundary']
 
-    if not 'location' in event:
-        logging.debug("{}: no location field!".format(id))
-        return False
 
-    elif not 'geo' in event['location']:
-        logging.debug("{}: no lat/long location!".format(id))
-        return False
+    if 'location' in event and 'geo' in event['location']:
+        geo = event['location']['geo']
+        
+    elif 'primary_venue' in event and \
+      'address' in event['primary_venue']:
+        geo = event['primary_venue']['address']
 
     else:
-        geo = event['location']['geo']
-        conf_geo = config['eventbrite']['geo_boundary']
-        
-        if float(geo['latitude']) >=  conf_geo['lat_min'] \
-          and float(geo['latitude']) <= conf_geo['lat_max'] \
-          and float(geo['longitude']) >= conf_geo['long_min'] \
-          and float(geo['longitude']) <= conf_geo['long_max']:
+        logging.debug("{}: no location or " 
+          "primary_venue found!".format(
+            id,
+            ))
+        return False
 
-            return True
-        else:
-            logging.debug("{}: Not in boundary!".format(id))
-            #print(event['name'])
-            #pprint.pprint(event['location'])
-            return False
+    if float(geo['latitude']) >=  conf_geo['lat_min'] \
+      and float(geo['latitude']) <= conf_geo['lat_max'] \
+      and float(geo['longitude']) >= conf_geo['long_min'] \
+      and float(geo['longitude']) <= conf_geo['long_max']:
+
+        return True
+
+    else:
+        logging.debug("{}: Not in boundary!".format(id))
+        #print(event['name'])
+        #pprint.pprint(event['location'])
+        return False
 
 
 # ------------------------------
@@ -1100,46 +1114,74 @@ def extract_events(page):
 
     returns: a list?
     """
+    candidate_list = []
+
     event_script = page.find_all(type="application/ld+json")
 
     num_candidates = len(event_script)
+    logging.debug("Found {} instances of "
+      "application/ld+json on page".format(
+        num_candidates,
+        ))
+    
+    if num_candidates > 0:
 
-    candidate_list = []
+        for candidate in event_script:
+            can_json = json.loads(candidate.string)
 
-    for candidate in event_script:
-        can_json = json.loads(candidate.string)
+            # Sigh. The format looks different now.
 
-        # Sigh. The format looks different now.
+                    #{'@context': 'https://schema.org',
+                    # '@type': 'ItemList',
+                    # 'itemListElement': [{'@type': 'ListItem',
+                    #                      'item': {'@type': 'Event',
+                    #                               'description': "At LiftOff Launchers we'll be "
+                    #                                              'Connecting the Waterloo Region '
+            #                               ... }}]}
 
-		#{'@context': 'https://schema.org',
-		# '@type': 'ItemList',
-		# 'itemListElement': [{'@type': 'ListItem',
-		#                      'item': {'@type': 'Event',
-		#                               'description': "At LiftOff Launchers we'll be "
-		#                                              'Connecting the Waterloo Region '
-        #                               ... }}]}
+            if '@type' in can_json and \
+              can_json['@type'] == 'ItemList' and \
+              'itemListElement' in can_json and \
+              isinstance(can_json['itemListElement'], list):
 
-        if '@type' in can_json and \
-          can_json['@type'] == 'ItemList' and \
-          'itemListElement' in can_json and \
-          isinstance(can_json['itemListElement'], list):
+                can_list = can_json['itemListElement']
 
-            can_list = can_json['itemListElement']
+                for possibility in can_list:
+                    if 'item' in possibility and \
+                      '@type' in possibility['item'] and \
+                      possibility['item']['@type'] == 'Event':
+                          candidate_list.append(possibility['item'])
 
-            for possibility in can_list:
-                if 'item' in possibility and \
-                  '@type' in possibility['item'] and \
-                  possibility['item']['@type'] == 'Event':
-                      candidate_list.append(possibility['item'])
+            # Events MIGHT be in a list, or MIGHT not. Sigh.
+            elif isinstance(can_json, list):
+                for possibility in can_json:
+                    if '@type' in possibility and \
+                      possibility['@type'] == 'Event':
+                        candidate_list.append(possibility)
+            elif '@type' in can_json and can_json['@type'] == 'Event':
+                candidate_list.append(can_json)
 
-        # Events MIGHT be in a list, or MIGHT not. Sigh.
-        elif isinstance(can_json, list):
-            for possibility in can_json:
-                if '@type' in possibility and \
-                  possibility['@type'] == 'Event':
-                    candidate_list.append(possibility)
-        elif '@type' in can_json and can_json['@type'] == 'Event':
-            candidate_list.append(can_json)
+    else:
+        
+        next_script = page.find('script', id='__NEXT_DATA__')
+        if next_script:
+            logging.debug("Found __NEXT_DATA__ script!")
+
+            # Now we are looking for 
+            # { "props": { "pageProps": ... 
+            #   { "upcomingEvents": [...] }}}
+
+            can_json = json.loads(next_script.string)
+
+            if 'props' in can_json and \
+              'pageProps' in can_json['props'] and \
+              'upcomingEvents' in can_json['props']['pageProps']:
+
+                can_list = can_json['props']['pageProps']['upcomingEvents']
+                candidate_list.extend(can_list)
+            else:
+                logging.debug("Could not find upcomingEvents in __NEXT_DATA__")
+
 
     logging.debug("Found {} candidates".format(len(candidate_list)))
     return candidate_list    
@@ -1366,7 +1408,12 @@ def incorporate_events(config, event_dict, new_events):
         virtual = False
 
         # Make an aware date 
-        end_date_raw = dateutil.parser.parse(event['endDate'])
+        end_date_raw = None
+        if 'endDate' in event:
+            end_date_raw = dateutil.parser.parse(event['endDate'])
+        elif 'end_date' in event:
+            end_date_raw = dateutil.parser.parse(event['end_date'])
+
 
         if end_date_raw.tzinfo is None or \
           end_date_raw.tzinfo.utcoffset(end_date_raw) is None:
@@ -1391,7 +1438,7 @@ def incorporate_events(config, event_dict, new_events):
         if id in event_dict:
             # TODO: Compare against (short) description. 
             # If they are different then need to update. 
-            #logging.debug("Event {} already in event_dict".format(id))
+            logging.debug("Event {} already in event_dict".format(id))
             continue
 
         if not too_far:
